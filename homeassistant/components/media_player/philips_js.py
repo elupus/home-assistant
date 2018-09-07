@@ -190,6 +190,14 @@ class PhilipsTV(MediaPlayerDevice):
         return self._media_content_type
 
     @property
+    def media_content_id(self):
+        """Content type of current playing media."""
+        if self._media_content_type == MEDIA_TYPE_CHANNEL:
+            return self._channel_name
+        else:
+            return None
+
+    @property
     def device_state_attributes(self):
         """Return the state attributes."""
         return {
