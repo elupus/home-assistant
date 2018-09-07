@@ -131,8 +131,6 @@ class PhilipsTV(MediaPlayerDevice):
         if source in self._source_mapping:
             self._tv.setSource(self._source_mapping.get(source))
             self._source = source
-            if not self._tv.on:
-                self._state = STATE_OFF
             self._update_content_type()
 
     @property
