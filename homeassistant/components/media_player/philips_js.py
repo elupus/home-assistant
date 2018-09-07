@@ -225,13 +225,18 @@ class PhilipsTV(MediaPlayerDevice):
         self._max_volume = self._tv.max_volume
         self._volume = self._tv.volume
         self._muted = self._tv.muted
-        if self._tv.source_id:
-            self._source = self._tv.getSourceName(self._tv.source_id)
+
         if self._tv.sources and not self._source_list:
             for srcid in self._tv.sources:
-                srcname = self._tv.getSourceName(srcid)
+                srcname = self._tv.sources[srcid]['name']
                 self._source_list.append(srcname)
                 self._source_mapping[srcname] = srcid
+
+        if self._tv.sources and self._tv.source_id in self._tv.sources:
+            self._source = self._tv.sources[self._tv.source_id]['name']
+        else:
+            self._source = None
+
         if self._tv.on:
             self._state = STATE_ON
         else:
