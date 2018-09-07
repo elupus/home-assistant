@@ -150,11 +150,11 @@ class PhilipsTV(MediaPlayerDevice):
 
     def mute_volume(self, mute):
         """Send mute command."""
-        self._tv.sendKey('Mute')
+        self._tv.setVolume(self._tv.volume, mute)
 
     def set_volume_level(self, volume):
         """Set volume level, range 0..1."""
-        self._tv.setVolume(volume)
+        self._tv.setVolume(volume, self._tv.muted)
 
     def media_previous_track(self):
         """Send rewind command."""
