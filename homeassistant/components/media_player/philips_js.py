@@ -70,11 +70,6 @@ class PhilipsTV(MediaPlayerDevice):
         self._tv = tv
         self._name = name
         self._state = STATE_UNKNOWN
-        self._min_volume = None
-        self._max_volume = None
-        self._volume = None
-        self._muted = False
-        self._program_name = None
         self._channel_name = None
         self._source = None
         self._source_list = []
@@ -129,12 +124,12 @@ class PhilipsTV(MediaPlayerDevice):
     @property
     def volume_level(self):
         """Volume level of the media player (0..1)."""
-        return self._volume
+        return self._tv.volume
 
     @property
     def is_volume_muted(self):
         """Boolean if volume is currently muted."""
-        return self._muted
+        return self._tv.muted
 
     def turn_on(self):
         """Turn on the device."""
@@ -229,10 +224,6 @@ class PhilipsTV(MediaPlayerDevice):
     def update(self):
         """Get the latest data and update device state."""
         self._tv.update()
-        self._min_volume = self._tv.min_volume
-        self._max_volume = self._tv.max_volume
-        self._volume = self._tv.volume
-        self._muted = self._tv.muted
 
         if self._tv.sources and not self._source_list:
             for srcid in self._tv.sources:
