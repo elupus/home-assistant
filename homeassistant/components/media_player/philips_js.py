@@ -14,7 +14,8 @@ from homeassistant.components.media_player import (
     PLATFORM_SCHEMA, SUPPORT_NEXT_TRACK, SUPPORT_PREVIOUS_TRACK,
     SUPPORT_SELECT_SOURCE, SUPPORT_TURN_OFF, SUPPORT_TURN_ON,
     SUPPORT_VOLUME_MUTE, SUPPORT_VOLUME_SET, SUPPORT_VOLUME_STEP,
-    SUPPORT_PLAY, MEDIA_TYPE_CHANNEL, MediaPlayerDevice)
+    SUPPORT_PLAY, MEDIA_TYPE_CHANNEL, SUPPORT_PLAY_MEDIA,
+    MediaPlayerDevice)
 from homeassistant.const import (
     CONF_HOST, CONF_NAME, CONF_API_VERSION, STATE_OFF, STATE_ON, STATE_UNKNOWN)
 from homeassistant.helpers.script import Script
@@ -31,7 +32,8 @@ SUPPORT_PHILIPS_JS = SUPPORT_TURN_OFF | SUPPORT_VOLUME_STEP | \
                      SUPPORT_SELECT_SOURCE
 
 SUPPORT_PHILIPS_JS_TV = SUPPORT_PHILIPS_JS | SUPPORT_NEXT_TRACK | \
-                        SUPPORT_PREVIOUS_TRACK | SUPPORT_PLAY
+                        SUPPORT_PREVIOUS_TRACK | SUPPORT_PLAY | \
+                        SUPPORT_PLAY_MEDIA
 
 CONF_ON_ACTION = 'turn_on_action'
 
@@ -82,6 +84,8 @@ class PhilipsTV(MediaPlayerDevice):
         self._connfail = 0
         self._source_mapping = {}
         self._channel_name = None
+        self._channel_list = []
+        self._channel_mapping = {}
         self._on_script = on_script
         self._media_content_type = None
 
@@ -187,6 +191,27 @@ class PhilipsTV(MediaPlayerDevice):
         """Return content type of playing media"""
         return self._media_content_type
 
+    @property
+    def device_state_attributes(self):
+        """Return the state attributes."""
+        return {
+            'channel_list': self._channel_list
+        }
+
+    def play_media(self, media_type, media_id, **kwargs):
+        """Play a piece of media."""
+        _LOGGER.debug(
+            "Call play media type <%s>, Id <%s>", media_type, media_id)
+
+        if media_type == MEDIA_TYPE_CHANNEL:
+            if media_id in self._channel_mapping:
+                self._tv.setSource(self._channel_mapping.get(media_id))
+                self._channel_name = media_id
+            else:
+                _LOGGER.error("Unable to find channel <%s>", media_id)
+        else:
+            _LOGGER.error("Unsupported media type <%s>", media_type)
+
     def _update_content_type(self):
         """Calculate content type based on source information"""
         if (self._tv.source_id == 'tv' or self._tv.source_id == '11'):
@@ -216,8 +241,12 @@ class PhilipsTV(MediaPlayerDevice):
 
         self._update_content_type()
 
-        self._tv.getChannelId()
-        self._tv.getChannels()
+        if self._tv.channels and not self._channel_list:
+            for chid in self._tv.channels:
+                chname = self._tv.channels[chid]['name']
+                self._channel_list.append(chname)
+                self._channel_mapping[chname] = chid
+
         if self._tv.channels and self._tv.channel_id in self._tv.channels:
             self._channel_name = self._tv.channels[self._tv.channel_id]['name']
         else:
