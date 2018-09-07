@@ -14,7 +14,7 @@ from homeassistant.components.media_player import (
     PLATFORM_SCHEMA, SUPPORT_NEXT_TRACK, SUPPORT_PREVIOUS_TRACK,
     SUPPORT_SELECT_SOURCE, SUPPORT_TURN_OFF, SUPPORT_TURN_ON,
     SUPPORT_VOLUME_MUTE, SUPPORT_VOLUME_SET, SUPPORT_VOLUME_STEP,
-    SUPPORT_PLAY, MediaPlayerDevice)
+    SUPPORT_PLAY, MEDIA_TYPE_CHANNEL, MediaPlayerDevice)
 from homeassistant.const import (
     CONF_HOST, CONF_NAME, CONF_API_VERSION, STATE_OFF, STATE_ON, STATE_UNKNOWN)
 from homeassistant.helpers.script import Script
@@ -81,9 +81,9 @@ class PhilipsTV(MediaPlayerDevice):
         self._source_list = []
         self._connfail = 0
         self._source_mapping = {}
-        self._watching_tv = None
         self._channel_name = None
         self._on_script = on_script
+        self._media_content_type = None
 
     @property
     def name(self):
@@ -98,10 +98,14 @@ class PhilipsTV(MediaPlayerDevice):
     @property
     def supported_features(self):
         """Flag media player features that are supported."""
-        is_supporting_turn_on = SUPPORT_TURN_ON if self._on_script else 0
-        if self._watching_tv:
-            return SUPPORT_PHILIPS_JS_TV | is_supporting_turn_on
-        return SUPPORT_PHILIPS_JS | is_supporting_turn_on
+        supports = SUPPORT_PHILIPS_JS
+        if self._on_script:
+            supports |= SUPPORT_TURN_ON
+
+        if self._media_content_type == MEDIA_TYPE_CHANNEL:
+            supports |= SUPPORT_PHILIPS_JS_TV
+
+        return supports
 
     @property
     def state(self):
@@ -125,7 +129,7 @@ class PhilipsTV(MediaPlayerDevice):
             self._source = source
             if not self._tv.on:
                 self._state = STATE_OFF
-            self._watching_tv = bool(self._tv.source_id == 'tv')
+            self._update_content_type()
 
     @property
     def volume_level(self):
@@ -173,9 +177,22 @@ class PhilipsTV(MediaPlayerDevice):
     @property
     def media_title(self):
         """Title of current playing media."""
-        if self._watching_tv and self._channel_name:
-            return '{} - {}'.format(self._source, self._channel_name)
-        return self._source
+        if self._media_content_type == MEDIA_TYPE_CHANNEL:
+            return self._channel_name
+        else:
+            return self._source
+
+    @property
+    def media_content_type(self):
+        """Return content type of playing media"""
+        return self._media_content_type
+
+    def _update_content_type(self):
+        """Calculate content type based on source information"""
+        if (self._tv.source_id == 'tv' or self._tv.source_id == '11'):
+            self._media_content_type = MEDIA_TYPE_CHANNEL
+        else:
+            self._media_content_type = None
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     def update(self):
@@ -197,7 +214,7 @@ class PhilipsTV(MediaPlayerDevice):
         else:
             self._state = STATE_OFF
 
-        self._watching_tv = bool(self._tv.source_id == 'tv')
+        self._update_content_type()
 
         self._tv.getChannelId()
         self._tv.getChannels()
