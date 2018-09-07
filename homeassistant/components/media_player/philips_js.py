@@ -29,11 +29,8 @@ MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=30)
 
 SUPPORT_PHILIPS_JS = SUPPORT_TURN_OFF | SUPPORT_VOLUME_STEP | \
                      SUPPORT_VOLUME_SET | SUPPORT_VOLUME_MUTE | \
-                     SUPPORT_SELECT_SOURCE
-
-SUPPORT_PHILIPS_JS_TV = SUPPORT_PHILIPS_JS | SUPPORT_NEXT_TRACK | \
-                        SUPPORT_PREVIOUS_TRACK | SUPPORT_PLAY | \
-                        SUPPORT_PLAY_MEDIA
+                     SUPPORT_SELECT_SOURCE | SUPPORT_NEXT_TRACK | \
+                     SUPPORT_PREVIOUS_TRACK | SUPPORT_PLAY | SUPPORT_PLAY_MEDIA
 
 CONF_ON_ACTION = 'turn_on_action'
 
@@ -88,6 +85,9 @@ class PhilipsTV(MediaPlayerDevice):
         self._channel_mapping = {}
         self._on_script = on_script
         self._media_content_type = None
+        self._supports = SUPPORT_PHILIPS_JS
+        if self._on_script:
+            self.supports |= SUPPORT_TURN_ON
 
     @property
     def name(self):
@@ -102,14 +102,7 @@ class PhilipsTV(MediaPlayerDevice):
     @property
     def supported_features(self):
         """Flag media player features that are supported."""
-        supports = SUPPORT_PHILIPS_JS
-        if self._on_script:
-            supports |= SUPPORT_TURN_ON
-
-        if self._media_content_type == MEDIA_TYPE_CHANNEL:
-            supports |= SUPPORT_PHILIPS_JS_TV
-
-        return supports
+        return self._supports
 
     @property
     def state(self):
