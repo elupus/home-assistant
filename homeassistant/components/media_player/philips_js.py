@@ -177,6 +177,13 @@ class PhilipsTV(MediaPlayerDevice):
         self._tv.sendKey('Next')
 
     @property
+    def media_channel(self):
+        if self._media_content_type == MEDIA_TYPE_CHANNEL:
+            return self._channel_name
+        else:
+            return None
+
+    @property
     def media_title(self):
         """Title of current playing media."""
         if self._media_content_type == MEDIA_TYPE_CHANNEL:
