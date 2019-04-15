@@ -25,6 +25,7 @@ from homeassistant.components import (
     script,
     switch,
     vacuum,
+    binary_sensor,
 )
 
 
@@ -61,6 +62,8 @@ DOMAIN_TO_GOOGLE_TYPES = {
 }
 
 DEVICE_CLASS_TO_GOOGLE_TYPES = {
+    (binary_sensor.DOMAIN, binary_sensor.DEVICE_CLASS_GARAGE_DOOR): TYPE_GARAGE,
+    (binary_sensor.DOMAIN, binary_sensor.DEVICE_CLASS_DOOR): TYPE_DOOR,
     (cover.DOMAIN, cover.DEVICE_CLASS_DOOR): TYPE_DOOR,
     (cover.DOMAIN, cover.DEVICE_CLASS_GARAGE): TYPE_GARAGE,
     (switch.DOMAIN, switch.DEVICE_CLASS_SWITCH): TYPE_SWITCH,
