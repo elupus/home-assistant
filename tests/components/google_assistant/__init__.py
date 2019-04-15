@@ -119,7 +119,7 @@ DEMO_DEVICES = [{
     },
     'traits': ['action.devices.traits.OpenClose'],
     'type':
-    'action.devices.types.BLINDS',
+    'action.devices.types.GARAGE',
     'willReportState': False
 }, {
     'id': 'cover.kitchen_window',
