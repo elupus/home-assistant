@@ -14,6 +14,7 @@ from homeassistant.components.google_assistant import (
     const, trait, helpers, smart_home as sh,
     EVENT_COMMAND_RECEIVED, EVENT_QUERY_RECEIVED, EVENT_SYNC_RECEIVED)
 from homeassistant.components.demo.light import DemoLight
+from homeassistant.components.demo.binary_sensor import DemoBinarySensor
 from homeassistant.components.demo.cover import DemoCover
 
 from homeassistant.helpers import device_registry
@@ -528,6 +529,35 @@ async def test_empty_name_doesnt_sync(hass):
     )
     light.hass = hass
     light.entity_id = 'light.demo_light'
+    await light.async_update_ha_state()
+
+    result = await sh.async_handle_message(
+        hass, BASIC_CONFIG, 'test-agent',
+        {
+            "requestId": REQ_ID,
+            "inputs": [{
+                "intent": "action.devices.SYNC"
+            }]
+        })
+
+    assert result == {
+        'requestId': REQ_ID,
+        'payload': {
+            'agentUserId': 'test-agent',
+            'devices': []
+        }
+    }
+
+
+async def test_missing_device_class_doesnt_sync(hass):
+    """Test that an entity without device class and no default doesn't sync."""
+    light = DemoBinarySensor(
+        'Demo Sensor',
+        state=False,
+        device_class='invalid_class'
+    )
+    light.hass = hass
+    light.entity_id = 'binary_sensor.demo_sensor'
     await light.async_update_ha_state()
 
     result = await sh.async_handle_message(
