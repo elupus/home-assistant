@@ -45,7 +45,8 @@ class EntityPlatform:
         self._async_unsub_polling = None
         # Method to cancel the retry of setup
         self._async_cancel_retry_setup = None
-        self._process_updates = asyncio.Lock(loop=hass.loop)
+        self._update_tasks = {}
+
 
         # Platform is None for the EntityComponent "catch-all" EntityPlatform
         # which powers entity_component.add_entities
@@ -404,19 +405,40 @@ class EntityPlatform:
 
         This method must be run in the event loop.
         """
-        if self._process_updates.locked():
+
+        update = {
+            entity_id: entity for entity_id, entity in self.entities.items()
+            if entity.should_poll
+        }
+        skipped = {
+            entity_id: task for entity_id, task in self._update_tasks.items()
+            if entity_id not in update
+        }
+        delay = (self.scan_interval / len(update)).total_seconds()
+
+        def finish_update_task(entity_id, task):
+            if task is None:
+                return True
+
+            if task.done():
+                task.result()
+                return True
+
             self.logger.warning(
-                "Updating %s %s took longer than the scheduled update "
-                "interval %s", self.platform_name, self.domain,
-                self.scan_interval)
-            return
+                "Updating %s took longer than the scheduled update "
+                "interval %s", entity_id, self.scan_interval)
+            return False
 
-        async with self._process_updates:
-            tasks = []
-            for entity in self.entities.values():
-                if not entity.should_poll:
-                    continue
-                tasks.append(entity.async_update_ha_state(True))
+        for entity_id, task in skipped.items():
+            finish_update_task(entity_id, task)
+            del self._update_tasks[entity_id]
 
-            if tasks:
-                await asyncio.wait(tasks, loop=self.hass.loop)
+        for entity_id, entity in update.items():
+            task = self._update_tasks.get(entity_id)
+            if not finish_update_task(entity_id, task):
+                continue
+
+            self.logger.error("Update entity %s", entity_id)
+            task = self.hass.async_create_task(entity.async_update_ha_state(True))
+            self._update_tasks[entity_id] = task
+            await asyncio.sleep(delay)
