@@ -36,7 +36,7 @@ DEPENDENCY_BLACKLIST = {'config'}
 
 _LOGGER = logging.getLogger(__name__)
 
-
+DATA_FLOWS = 'config_flows'
 DATA_COMPONENTS = 'components'
 DATA_INTEGRATIONS = 'integrations'
 PACKAGE_CUSTOM_COMPONENTS = 'custom_components'
@@ -61,6 +61,71 @@ def manifest_from_legacy_module(domain: str, module: ModuleType) -> Dict:
         'dependencies': getattr(module, 'DEPENDENCIES', []),
         'codeowners': [],
     }
+
+
+async def get_custom_components(hass: 'HomeAssistant') -> List['Integration']:
+    """Return list of custom integrations."""
+    try:
+        import custom_components
+    except ImportError:
+        return []
+
+    def get_custom_dirs(paths: List) -> List:
+        return [
+            entry
+            for path in paths
+            for entry in pathlib.Path(path).iterdir()
+            if entry.is_dir()
+        ]
+
+    dirs = await hass.async_add_executor_job(
+        get_custom_dirs, custom_components.__path__)
+
+    async def get_component(domain: str) -> Optional[Integration]:
+        try:
+            return await async_get_integration(hass, domain)
+        except IntegrationNotFound:
+            return None
+
+    components = await asyncio.gather(*[
+        get_component(comp.name)
+        for comp in dirs
+    ])
+
+    return [
+        component
+        for component in components
+        if component is not None
+    ]
+
+
+async def _get_config_flows(hass: 'HomeAssistant') -> List[str]:
+    """Return list of config flows."""
+    from homeassistant.generated.config_flows import FLOWS
+    flows = set()  # type: Set[str]
+    flows.update(FLOWS)
+
+    components = await get_custom_components(hass)
+    flows.update([
+        component.domain
+        for component in components
+        if component.config_flow
+    ])
+    return list(sorted(flows))
+
+
+async def get_config_flows(hass: 'HomeAssistant') -> List[str]:
+    """Return cached list of config flows."""
+    cache = hass.data.get(DATA_FLOWS)
+    if cache is None:
+        cache = hass.data[DATA_FLOWS] = {}
+        cache['lock'] = asyncio.Lock()
+        cache['data'] = None
+    async with cache['lock']:
+        if cache['data'] is None:
+            cache['data'] = await _get_config_flows(hass)
+
+        return cast(List[str], cache['data'])
 
 
 class Integration:
@@ -121,6 +186,7 @@ class Integration:
         self.after_dependencies = manifest.get(
             'after_dependencies')  # type: Optional[List[str]]
         self.requirements = manifest['requirements']  # type: List[str]
+        self.config_flow = manifest.get('config_flow', False)  # type: bool
         _LOGGER.info("Loaded %s from %s", self.domain, pkg_path)
 
     @property
