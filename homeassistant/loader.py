@@ -63,14 +63,16 @@ def manifest_from_legacy_module(domain: str, module: ModuleType) -> Dict:
     }
 
 
-async def async_get_custom_components(hass: 'HomeAssistant') -> List['Integration']:
+async def async_get_custom_components(
+        hass: 'HomeAssistant') -> List['Integration']:
     """Return list of custom integrations."""
     try:
         import custom_components
     except ImportError:
         return []
 
-    def get_custom_dirs(paths: List) -> List:
+    def get_sub_directories(paths: List) -> List:
+        """Return all sub directories in a set of paths."""
         return [
             entry
             for path in paths
@@ -79,23 +81,31 @@ async def async_get_custom_components(hass: 'HomeAssistant') -> List['Integratio
         ]
 
     dirs = await hass.async_add_executor_job(
-        get_custom_dirs, custom_components.__path__)
+        get_sub_directories, custom_components.__path__)
 
-    async def get_component(domain: str) -> Optional[Integration]:
+    async def get(domain: str) -> Optional[Integration]:
+        """Try to get a custom integration
+
+        Method will silently ignore non custom or missing
+        integrations
+        """
         try:
-            return await async_get_integration(hass, domain)
+            integration = await async_get_integration(hass, domain)
+            if integration.is_built_in:
+                return None
+            return integration
         except IntegrationNotFound:
             return None
 
-    components = await asyncio.gather(*[
-        get_component(comp.name)
-        for comp in dirs
+    integrations = await asyncio.gather(*[
+        get(directory.name)
+        for directory in dirs
     ])
 
     return [
-        component
-        for component in components
-        if component is not None
+        integration
+        for integration in integrations
+        if integrations is not None
     ]
 
 
@@ -105,11 +115,11 @@ async def _async_get_config_flows(hass: 'HomeAssistant') -> List[str]:
     flows = set()  # type: Set[str]
     flows.update(FLOWS)
 
-    components = await async_get_custom_components(hass)
+    integrations = await async_get_custom_components(hass)
     flows.update([
-        component.domain
-        for component in components
-        if component.config_flow
+        integration.domain
+        for integration in integrations
+        if integration.config_flow
     ])
     return list(sorted(flows))
 
