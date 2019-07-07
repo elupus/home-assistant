@@ -63,7 +63,7 @@ def manifest_from_legacy_module(domain: str, module: ModuleType) -> Dict:
     }
 
 
-async def get_custom_components(hass: 'HomeAssistant') -> List['Integration']:
+async def async_get_custom_components(hass: 'HomeAssistant') -> List['Integration']:
     """Return list of custom integrations."""
     try:
         import custom_components
@@ -99,13 +99,13 @@ async def get_custom_components(hass: 'HomeAssistant') -> List['Integration']:
     ]
 
 
-async def _get_config_flows(hass: 'HomeAssistant') -> List[str]:
+async def _async_get_config_flows(hass: 'HomeAssistant') -> List[str]:
     """Return list of config flows."""
     from homeassistant.generated.config_flows import FLOWS
     flows = set()  # type: Set[str]
     flows.update(FLOWS)
 
-    components = await get_custom_components(hass)
+    components = await async_get_custom_components(hass)
     flows.update([
         component.domain
         for component in components
@@ -114,7 +114,7 @@ async def _get_config_flows(hass: 'HomeAssistant') -> List[str]:
     return list(sorted(flows))
 
 
-async def get_config_flows(hass: 'HomeAssistant') -> List[str]:
+async def async_get_config_flows(hass: 'HomeAssistant') -> List[str]:
     """Return cached list of config flows."""
     cache = hass.data.get(DATA_FLOWS)
     if cache is None:
@@ -123,7 +123,7 @@ async def get_config_flows(hass: 'HomeAssistant') -> List[str]:
         cache['data'] = None
     async with cache['lock']:
         if cache['data'] is None:
-            cache['data'] = await _get_config_flows(hass)
+            cache['data'] = await _async_get_config_flows(hass)
 
         return cast(List[str], cache['data'])
 

@@ -5,7 +5,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers.data_entry_flow import (
     FlowManagerIndexView, FlowManagerResourceView)
-from homeassistant.loader import get_config_flows
+from homeassistant.loader import async_get_config_flows
 
 
 async def async_setup(hass):
@@ -173,7 +173,7 @@ class ConfigManagerAvailableFlowView(HomeAssistantView):
     async def get(self, request):
         """List available flow handlers."""
         hass = request.app['hass']
-        return self.json(await get_config_flows(hass))
+        return self.json(await async_get_config_flows(hass))
 
 
 class OptionManagerFlowIndexView(FlowManagerIndexView):
