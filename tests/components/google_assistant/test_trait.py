@@ -861,6 +861,8 @@ async def test_arm_disarm_arm_away(hass):
     assert trait.ArmDisArmTrait.supported(alarm_control_panel.DOMAIN, 0, None)
     assert trait.ArmDisArmTrait.might_2fa(alarm_control_panel.DOMAIN, 0, None)
 
+    await trait.async_load_translation_cache(hass, "en")
+
     trt = trait.ArmDisArmTrait(
         hass,
         State(
@@ -876,33 +878,33 @@ async def test_arm_disarm_arm_away(hass):
                 {
                     "level_name": "armed_home",
                     "level_values": [
-                        {"level_synonym": ["armed home", "home"], "lang": "en"}
+                        {"level_synonym": ["Armed home", "home"], "lang": "en"}
                     ],
                 },
                 {
                     "level_name": "armed_away",
                     "level_values": [
-                        {"level_synonym": ["armed away", "away"], "lang": "en"}
+                        {"level_synonym": ["Armed away", "away"], "lang": "en"}
                     ],
                 },
                 {
                     "level_name": "armed_night",
                     "level_values": [
-                        {"level_synonym": ["armed night", "night"], "lang": "en"}
+                        {"level_synonym": ["Armed night", "night"], "lang": "en"}
                     ],
                 },
                 {
                     "level_name": "armed_custom_bypass",
                     "level_values": [
                         {
-                            "level_synonym": ["armed custom bypass", "custom"],
+                            "level_synonym": ["Armed custom bypass", "custom"],
                             "lang": "en",
                         }
                     ],
                 },
                 {
                     "level_name": "triggered",
-                    "level_values": [{"level_synonym": ["triggered"], "lang": "en"}],
+                    "level_values": [{"level_synonym": ["Triggered"], "lang": "en"}],
                 },
             ],
             "ordered": False,
@@ -1031,6 +1033,8 @@ async def test_arm_disarm_disarm(hass):
     assert trait.ArmDisArmTrait.supported(alarm_control_panel.DOMAIN, 0, None)
     assert trait.ArmDisArmTrait.might_2fa(alarm_control_panel.DOMAIN, 0, None)
 
+    await trait.async_load_translation_cache(hass, "en")
+
     trt = trait.ArmDisArmTrait(
         hass,
         State(
@@ -1046,33 +1050,33 @@ async def test_arm_disarm_disarm(hass):
                 {
                     "level_name": "armed_home",
                     "level_values": [
-                        {"level_synonym": ["armed home", "home"], "lang": "en"}
+                        {"level_synonym": ["Armed home", "home"], "lang": "en"}
                     ],
                 },
                 {
                     "level_name": "armed_away",
                     "level_values": [
-                        {"level_synonym": ["armed away", "away"], "lang": "en"}
+                        {"level_synonym": ["Armed away", "away"], "lang": "en"}
                     ],
                 },
                 {
                     "level_name": "armed_night",
                     "level_values": [
-                        {"level_synonym": ["armed night", "night"], "lang": "en"}
+                        {"level_synonym": ["Armed night", "night"], "lang": "en"}
                     ],
                 },
                 {
                     "level_name": "armed_custom_bypass",
                     "level_values": [
                         {
-                            "level_synonym": ["armed custom bypass", "custom"],
+                            "level_synonym": ["Armed custom bypass", "custom"],
                             "lang": "en",
                         }
                     ],
                 },
                 {
                     "level_name": "triggered",
-                    "level_values": [{"level_synonym": ["triggered"], "lang": "en"}],
+                    "level_values": [{"level_synonym": ["Triggered"], "lang": "en"}],
                 },
             ],
             "ordered": False,
@@ -1190,6 +1194,8 @@ async def test_fan_speed(hass):
     assert helpers.get_google_type(fan.DOMAIN, None) is not None
     assert trait.FanSpeedTrait.supported(fan.DOMAIN, fan.SUPPORT_SET_SPEED, None)
 
+    await trait.async_load_translation_cache(hass, "en")
+
     trt = trait.FanSpeedTrait(
         hass,
         State(
@@ -1214,13 +1220,13 @@ async def test_fan_speed(hass):
             "speeds": [
                 {
                     "speed_name": "off",
-                    "speed_values": [{"speed_synonym": ["stop", "off"], "lang": "en"}],
+                    "speed_values": [{"speed_synonym": ["off", "stop"], "lang": "en"}],
                 },
                 {
                     "speed_name": "low",
                     "speed_values": [
                         {
-                            "speed_synonym": ["slow", "low", "slowest", "lowest"],
+                            "speed_synonym": ["low", "slow", "slowest", "lowest"],
                             "lang": "en",
                         }
                     ],
@@ -1274,6 +1280,8 @@ async def test_modes(hass):
         media_player.DOMAIN, media_player.SUPPORT_SELECT_SOURCE, None
     )
 
+    await trait.async_load_translation_cache(hass, "en")
+
     trt = trait.ModesTrait(
         hass,
         State(
@@ -1296,9 +1304,9 @@ async def test_modes(hass):
     assert attribs == {
         "availableModes": [
             {
-                "name": "input source",
+                "name": "source",
                 "name_values": [
-                    {"name_synonym": ["input source", "input", "source"], "lang": "en"}
+                    {"name_synonym": ["source", "input source", "input"], "lang": "en"}
                 ],
                 "settings": [
                     {
@@ -1375,7 +1383,7 @@ async def test_sound_modes(hass):
     assert attribs == {
         "availableModes": [
             {
-                "name": "sound mode",
+                "name": "sound_mode",
                 "name_values": [
                     {"name_synonym": ["sound mode", "effects"], "lang": "en"}
                 ],

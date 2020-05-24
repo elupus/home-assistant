@@ -31,6 +31,7 @@ from .const import (
 )
 from .const import EVENT_QUERY_RECEIVED  # noqa: F401
 from .http import GoogleAssistantView, GoogleConfig
+from .trait import async_load_translation_cache
 
 from .const import EVENT_COMMAND_RECEIVED, EVENT_SYNC_RECEIVED  # noqa: F401, isort:skip
 
@@ -117,5 +118,7 @@ async def async_setup(hass: HomeAssistant, yaml_config: Dict[str, Any]):
         hass.services.async_register(
             DOMAIN, SERVICE_REQUEST_SYNC, request_sync_service_handler
         )
+
+    await async_load_translation_cache(hass, "en")
 
     return True

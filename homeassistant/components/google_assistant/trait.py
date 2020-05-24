@@ -51,6 +51,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import DOMAIN as HA_DOMAIN
 from homeassistant.helpers.network import get_url
+from homeassistant.helpers.translation import async_get_translations
 from homeassistant.util import color as color_util, temperature as temp_util
 
 from .const import (
@@ -123,6 +124,47 @@ def _google_temp_unit(units):
     if units == TEMP_FAHRENHEIT:
         return "F"
     return "C"
+
+
+_TRANSLATIONS = {}
+
+
+async def async_load_translation_cache(hass, language):
+    """Load up translation cache for a given language."""
+    if language in _TRANSLATIONS:
+        return
+
+    translations = {}
+
+    async def _load(domain, category):
+        translations.update(
+            await async_get_translations(hass, language, category, domain)
+        )
+
+    await _load("alarm_control_panel", "state")
+    await _load("fan", "speed")
+    await _load("media_player", "input_source")
+    await _load("media_player", "sound_mode")
+
+    _TRANSLATIONS[language] = translations
+
+
+def _get_synonym_values(prefix, device_class, value, key, fixed_synonyms):
+    result = []
+    for lang, translations in _TRANSLATIONS.items():
+        translation = translations.get(f"{prefix}.{device_class}.{value}")
+        if not translation:
+            translation = translations.get(f"{prefix}._.{value}")
+        if not translation:
+            translation = value.replace("_", " ")
+        synonyms = [translation]
+        for synonym in fixed_synonyms.get(value, []):
+            if synonym not in synonyms:
+                synonyms.append(synonym)
+
+        result.append({key: synonyms, "lang": lang})
+
+    return result
 
 
 class _Trait:
@@ -972,6 +1014,13 @@ class ArmDisArmTrait(_Trait):
         STATE_ALARM_TRIGGERED: SERVICE_ALARM_TRIGGER,
     }
 
+    level_synonyms = {
+        STATE_ALARM_ARMED_HOME: ["home"],
+        STATE_ALARM_ARMED_AWAY: ["away"],
+        STATE_ALARM_ARMED_NIGHT: ["night"],
+        STATE_ALARM_ARMED_CUSTOM_BYPASS: ["custom"],
+    }
+
     @staticmethod
     def supported(domain, features, device_class):
         """Test if state is supported."""
@@ -986,16 +1035,17 @@ class ArmDisArmTrait(_Trait):
         """Return ArmDisarm attributes for a sync request."""
         response = {}
         levels = []
+        device_class = self.state.attributes.get("device_class", "_")
         for state in self.state_to_service:
-            # level synonyms are generated from state names
-            # 'armed_away' becomes 'armed away' or 'away'
-            level_synonym = [state.replace("_", " ")]
-            if state != STATE_ALARM_TRIGGERED:
-                level_synonym.append(state.split("_")[1])
-
             level = {
                 "level_name": state,
-                "level_values": [{"level_synonym": level_synonym, "lang": "en"}],
+                "level_values": _get_synonym_values(
+                    "component.alarm_control_panel.state",
+                    device_class,
+                    state,
+                    "level_synonym",
+                    self.level_synonyms,
+                ),
             }
             levels.append(level)
         response["availableArmLevels"] = {"levels": levels, "ordered": False}
@@ -1075,14 +1125,18 @@ class FanSpeedTrait(_Trait):
         """Return speed point and modes attributes for a sync request."""
         modes = self.state.attributes.get(fan.ATTR_SPEED_LIST, [])
         speeds = []
+
+        device_class = self.state.attributes.get("device_class", "_")
         for mode in modes:
-            if mode not in self.speed_synonyms:
-                continue
             speed = {
                 "speed_name": mode,
-                "speed_values": [
-                    {"speed_synonym": self.speed_synonyms.get(mode), "lang": "en"}
-                ],
+                "speed_values": _get_synonym_values(
+                    "component.fan.speed",
+                    device_class,
+                    mode,
+                    "speed_synonym",
+                    self.speed_synonyms,
+                ),
             }
             speeds.append(speed)
 
@@ -1129,8 +1183,8 @@ class ModesTrait(_Trait):
     commands = [COMMAND_MODES]
 
     SYNONYMS = {
-        "input source": ["input source", "input", "source"],
-        "sound mode": ["sound mode", "effects"],
+        media_player.ATTR_INPUT_SOURCE: ["input source", "input"],
+        media_player.ATTR_SOUND_MODE: ["sound mode", "effects"],
     }
 
     @staticmethod
@@ -1147,41 +1201,50 @@ class ModesTrait(_Trait):
     def sync_attributes(self):
         """Return mode attributes for a sync request."""
 
-        def _generate(name, settings):
+        def _get_values(prefix, value, key):
+            return _get_synonym_values(
+                prefix,
+                self.state.attributes.get("device_class", "_"),
+                value,
+                key,
+                self.SYNONYMS,
+            )
+
+        def _generate(category, settings):
             mode = {
-                "name": name,
-                "name_values": [
-                    {"name_synonym": self.SYNONYMS.get(name, [name]), "lang": "en"}
-                ],
-                "settings": [],
-                "ordered": False,
-            }
-            for setting in settings:
-                mode["settings"].append(
+                "name": category,
+                "name_values": _get_values("", category, "name_synonym"),
+                "settings": [
                     {
                         "setting_name": setting,
-                        "setting_values": [
-                            {
-                                "setting_synonym": self.SYNONYMS.get(
-                                    setting, [setting]
-                                ),
-                                "lang": "en",
-                            }
-                        ],
+                        "setting_values": _get_values(
+                            f"component.media_player.{category}",
+                            setting,
+                            "setting_synonym",
+                        ),
                     }
-                )
+                    for setting in settings
+                ],
+                "ordered": False,
+            }
             return mode
 
         attrs = self.state.attributes
         modes = []
         if media_player.ATTR_INPUT_SOURCE_LIST in attrs:
             modes.append(
-                _generate("input source", attrs[media_player.ATTR_INPUT_SOURCE_LIST])
+                _generate(
+                    media_player.ATTR_INPUT_SOURCE,
+                    attrs[media_player.ATTR_INPUT_SOURCE_LIST],
+                )
             )
 
         if media_player.ATTR_SOUND_MODE_LIST in attrs:
             modes.append(
-                _generate("sound mode", attrs[media_player.ATTR_SOUND_MODE_LIST])
+                _generate(
+                    media_player.ATTR_SOUND_MODE,
+                    attrs[media_player.ATTR_SOUND_MODE_LIST],
+                )
             )
 
         payload = {"availableModes": modes}
