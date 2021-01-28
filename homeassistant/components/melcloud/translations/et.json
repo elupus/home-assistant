@@ -11,8 +11,11 @@
         "step": {
             "user": {
                 "data": {
-                    "password": "Salas\u00f5na"
-                }
+                    "password": "Salas\u00f5na",
+                    "username": "E-post"
+                },
+                "description": "\u00dchenda oma MELCloudi konto abil.",
+                "title": "\u00dchenda MELCloudiga"
             }
         }
     }

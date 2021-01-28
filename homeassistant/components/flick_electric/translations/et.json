@@ -11,10 +11,13 @@
         "step": {
             "user": {
                 "data": {
-                    "password": "Salas\u00f5na"
-                }
+                    "client_id": "Kliendi ID (valikuline)",
+                    "client_secret": "Kliendi salas\u00f5na (valikuline)",
+                    "password": "Salas\u00f5na",
+                    "username": "Kasutajanimi"
+                },
+                "title": "Flick'i sisselogimisandmeid"
             }
         }
-    },
-    "title": ""
+    }
 }
