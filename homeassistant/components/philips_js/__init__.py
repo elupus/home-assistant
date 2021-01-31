@@ -21,7 +21,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 
-PLATFORMS = ["media_player", "remote"]
+PLATFORMS = ["media_player", "light", "remote"]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -114,6 +114,9 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
         """Set up the coordinator."""
         self.api = api
         self._notify_future: Optional[asyncio.Task] = None
+        self.ambilight_mode: Optional[str] = None
+        self.ambilight_processed: Optional[Dict] = None
+        self.ambilight_cached: Optional[Dict] = None
 
         @callback
         def _update_listeners():
@@ -169,6 +172,9 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
         """Fetch the latest data from the source."""
         try:
             await self.api.update()
+            self.ambilight_mode = self.api.getAmbilightMode()
+            self.ambilight_processed = self.api.getAmbilightProcessed()
+            self.ambilight_cached = self.api.getAmbilightCached()
             self._async_notify_schedule()
         except ConnectionFailure:
             pass
