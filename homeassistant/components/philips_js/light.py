@@ -11,12 +11,12 @@ from homeassistant.components.light import (
     SUPPORT_EFFECT,
     LightEntity,
 )
-from homeassistant.components.philips_js import PhilipsTVDataUpdateCoordinator
 from homeassistant.core import callback
 from homeassistant.helpers.typing import HomeAssistantType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.color import color_hsv_to_RGB, color_RGB_to_hsv
 
+from . import PhilipsTVDataUpdateCoordinator
 from .const import CONF_SYSTEM, DOMAIN
 
 CONTROLLED_MODES = ["manual", "cached"]
