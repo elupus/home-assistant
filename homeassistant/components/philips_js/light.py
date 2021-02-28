@@ -159,7 +159,7 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         effect = kwargs.get(ATTR_EFFECT)
 
         if not self._tv.on:
-            raise Exception("Light is not turned on")
+            raise Exception("TV is not available")
 
         if self._tv.ambilight_power != "On":
             if not await self._tv.setAmbilightPower("On"):
@@ -204,7 +204,7 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         """Turn of ambilight."""
 
         if not self._tv.on:
-            raise Exception("Light is not turned on")
+            raise Exception("TV is not available")
 
         if not await self._tv.setAmbilightPower("Off"):
             raise Exception("Failed to set ambilight power")
