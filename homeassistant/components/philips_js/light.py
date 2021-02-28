@@ -19,7 +19,8 @@ from homeassistant.util.color import color_hsv_to_RGB, color_RGB_to_hsv
 from . import PhilipsTVDataUpdateCoordinator
 from .const import CONF_SYSTEM, DOMAIN
 
-CONTROLLED_MODES = ["manual", "cached"]
+CONTROLLED_MODES = ["manual", "expert"]
+ACTIVE_MODES = [*CONTROLLED_MODES, "lounge"]
 
 
 async def async_setup_entry(
@@ -101,7 +102,11 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
     @property
     def effect_list(self):
         """Return the list of supported effects."""
-        return self._coordinator.api.ambilight_modes
+        return [
+            mode
+            for mode in self._coordinator.api.ambilight_modes
+            if mode in ACTIVE_MODES
+        ]
 
     @property
     def effect(self):
@@ -123,7 +128,11 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
     @property
     def is_on(self):
         """Return if the light is turned on."""
-        return self._tv.on and self._tv.ambilight_power == "On"
+        return (
+            self._tv.on
+            and self._tv.ambilight_power == "On"
+            and self._tv.ambilight_mode in ACTIVE_MODES
+        )
 
     @property
     def device_info(self):
@@ -165,6 +174,15 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
             if not await self._tv.setAmbilightPower("On"):
                 raise Exception("Failed to set ambilight power")
 
+        if effect is None:
+            if self._tv.ambilight_mode not in ACTIVE_MODES:
+                effect = "manual"
+            else:
+                effect = self._tv.ambilight_mode
+
+        if effect is None:
+            effect = self._tv.ambilight_mode or "manual"
+
         if brightness or hs_color:
             if brightness is None:
                 if self.brightness:
@@ -187,13 +205,11 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
                 "g": rgb[1],
                 "b": rgb[2],
             }
+
             if not await self._tv.setAmbilightCached(data):
                 raise Exception("Failed to set ambilight color")
 
-            if self._tv.ambilight_mode not in CONTROLLED_MODES and effect is None:
-                effect = "manual"
-
-        if effect and effect != self._tv.ambilight_mode:
+        if effect != self._tv.ambilight_mode:
             if not await self._tv.setAmbilightMode(effect):
                 raise Exception("Failed to set ambilight mode")
 
@@ -206,7 +222,7 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         if not self._tv.on:
             raise Exception("TV is not available")
 
-        if not await self._tv.setAmbilightPower("Off"):
+        if not await self._tv.setAmbilightMode("internal"):
             raise Exception("Failed to set ambilight power")
 
         self.async_write_ha_state()
