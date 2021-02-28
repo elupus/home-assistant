@@ -169,10 +169,6 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
         """Fetch the latest data from the source."""
         try:
             await self.api.update()
-            await self.api.getAmbilightPower()
-            await self.api.getAmbilightMode()
-            await self.api.getAmbilightProcessed()
-            await self.api.getAmbilightCached()
             self._async_notify_schedule()
         except ConnectionFailure:
             pass
