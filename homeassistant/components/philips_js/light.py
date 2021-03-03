@@ -125,9 +125,9 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         effects = []
 
         effects.extend(
-            _get_effect(style["styleName"], algo)
+            _get_effect(style["styleName"], algorithm)
             for style in self._coordinator.api.ambilight_styles.values()
-            for algo in style.get("algorithms", {})
+            for algorithm in style.get("algorithms", {})
         )
 
         effects.extend(
@@ -233,9 +233,9 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
             raise Exception("Failed to set ambilight color")
 
         if algorithm == "internal":
-            algo = "manual"
+            algorithm = "manual"
 
-        if algo != self._tv.ambilight_mode:
+        if algorithm != self._tv.ambilight_mode:
             if not await self._tv.setAmbilightMode(algorithm):
                 raise Exception("Failed to set ambilight mode")
 
