@@ -1,5 +1,5 @@
 """Component to integrate ambilight for TVs exposing the Joint Space API."""
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from haphilipsjs.typing import AmbilightCurrentConfiguration
 
@@ -22,6 +22,8 @@ from . import PhilipsTVDataUpdateCoordinator
 from .const import CONF_SYSTEM, DOMAIN
 
 ACTIVE_MODES = ["manual", "expert", "lounge"]
+EFFECT_PARTITION = ": "
+EFFECT_MODE = "Mode"
 
 
 async def async_setup_entry(
@@ -44,9 +46,16 @@ def _get_settings(style: AmbilightCurrentConfiguration):
     """Extract the color settings data from a style."""
     if style["styleName"] in ("FOLLOW_COLOR", "Lounge light"):
         return style["colorSettings"]
-    elif style["styleName"] == "FOLLOW_AUDIO":
+    if style["styleName"] == "FOLLOW_AUDIO":
         return style["audioSettings"]
     return None
+
+
+def _get_effect(style: str, algorithm: Optional[str]):
+    """Return the effect string based on the style and algorithm."""
+    if algorithm:
+        return f"{style}{EFFECT_PARTITION}{algorithm}"
+    return style
 
 
 def _average_pixels(data):
@@ -116,13 +125,13 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         effects = []
 
         effects.extend(
-            f"{style['styleName']}: {algo}"
+            _get_effect(style["styleName"], algo)
             for style in self._coordinator.api.ambilight_styles.values()
-            for algo in style.get("algorithms", {})]
+            for algo in style.get("algorithms", {})
         )
 
         effects.extend(
-            f"Mode: {mode}"
+            _get_effect(EFFECT_MODE, mode)
             for mode in self._coordinator.api.ambilight_modes
             if mode in ACTIVE_MODES
         )
@@ -136,24 +145,24 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         if current and current["isExpert"]:
             settings = _get_settings(current)
             if settings:
-                return f"{current['styleName']}: {settings['algorithm']}"
-            else:
-                return f"{current['styleName']}"
+                return _get_effect(current["styleName"], settings["algorithm"])
+            return _get_effect(current["styleName"], None)
 
-        else:
-            return f"Mode: {self._coordinator.api.ambilight_mode}"
+        return _get_effect(EFFECT_MODE, self._coordinator.api.ambilight_mode)
 
     @property
     def hs_color(self):
         """Return the hue and saturation color value [float, float]."""
         if self._hsv:
             return self._hsv[:2]
+        return None
 
     @property
     def brightness(self):
         """Return the hue and saturation color value [float, float]."""
         if self._hsv:
             return self._hsv[2]
+        return None
 
     @property
     def is_on(self):
@@ -164,11 +173,10 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         current = self._coordinator.api.ambilight_current_configuration
         if current and current["isExpert"]:
             return True
-        else:
-            return (
-                self._tv.ambilight_power == "On"
-                and self._tv.ambilight_mode in ACTIVE_MODES
-            )
+
+        return (
+            self._tv.ambilight_power == "On" and self._tv.ambilight_mode in ACTIVE_MODES
+        )
 
     @property
     def device_info(self):
@@ -211,6 +219,58 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         self._update_from_coordinator()
         super()._handle_coordinator_update()
 
+    async def _set_ambilight_cached(self, algorithm, hs_color, brightness):
+        """Set ambilight via the manual or expert mode."""
+        rgb = color_hsv_to_RGB(hs_color[0], hs_color[1], brightness * 100 / 255)
+
+        data = {
+            "r": rgb[0],
+            "g": rgb[1],
+            "b": rgb[2],
+        }
+
+        if not await self._tv.setAmbilightCached(data):
+            raise Exception("Failed to set ambilight color")
+
+        if algorithm == "internal":
+            algo = "manual"
+
+        if algo != self._tv.ambilight_mode:
+            if not await self._tv.setAmbilightMode(algorithm):
+                raise Exception("Failed to set ambilight mode")
+
+    async def _set_ambilight_config(self, style, algorithm, hs_color, brightness):
+        """Set ambilight via current configuration."""
+        config: AmbilightCurrentConfiguration = {
+            "styleName": style,
+            "isExpert": True,
+        }
+
+        setting = {
+            "algorithm": algorithm,
+            "color": {
+                "hue": round(hs_color[0] * 255.0 / 360.0),
+                "saturation": round(hs_color[1] * 255.0 / 100.0),
+                "brightness": round(brightness),
+            },
+            "colorDelta": {
+                "hue": 0,
+                "saturation": 0,
+                "brightness": 0,
+            },
+        }
+
+        if style in ("FOLLOW_COLOR", "Lounge light"):
+            config["colorSettings"] = setting
+            config["speed"] = 2
+
+        elif style == "FOLLOW_AUDIO":
+            config["audioSettings"] = setting
+            config["tuning"] = 0
+
+        if not await self._tv.setAmbilightCurrentConfiguration(config):
+            raise Exception("Failed to set ambilight mode")
+
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the bulb on."""
         brightness = kwargs.get(ATTR_BRIGHTNESS)
@@ -239,58 +299,11 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
             else:
                 hs_color = [0, 0]
 
-        style, _, algo = effect.partition(": ")
-
-        if style == "Mode":
-            hsv = [hs_color[0], hs_color[1], brightness * 100 / 255]
-
-            rgb = color_hsv_to_RGB(*hsv)
-
-            data = {
-                "r": rgb[0],
-                "g": rgb[1],
-                "b": rgb[2],
-            }
-
-            if not await self._tv.setAmbilightCached(data):
-                raise Exception("Failed to set ambilight color")
-
-            if algo == "internal":
-                algo = "manual"
-
-            if algo != self._tv.ambilight_mode:
-                if not await self._tv.setAmbilightMode(algo):
-                    raise Exception("Failed to set ambilight mode")
+        style, _, algorithm = effect.partition(EFFECT_PARTITION)
+        if style == EFFECT_MODE:
+            await self._set_ambilight_cached(algorithm, hs_color, brightness)
         else:
-            config: AmbilightCurrentConfiguration = {
-                "styleName": style,
-                "isExpert": True,
-            }
-
-            setting = {
-                "algorithm": algo,
-                "color": {
-                    "hue": round(hs_color[0] * 255.0 / 360.0),
-                    "saturation": round(hs_color[1] * 255.0 / 100.0),
-                    "brightness": round(brightness),
-                },
-                "colorDelta": {
-                    "hue": 0,
-                    "saturation": 0,
-                    "brightness": 0,
-                },
-            }
-
-            if style in ("FOLLOW_COLOR", "Lounge light"):
-                config["colorSettings"] = setting
-                config["speed"] = 2
-
-            elif style == "FOLLOW_AUDIO":
-                config["audioSettings"] = setting
-                config["tuning"] = 0
-
-            if not await self._tv.setAmbilightCurrentConfiguration(config):
-                raise Exception("Failed to set ambilight mode")
+            await self._set_ambilight_config(style, algorithm, hs_color, brightness)
 
         self._update_from_coordinator()
         self.async_write_ha_state()
