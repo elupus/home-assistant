@@ -118,7 +118,7 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         effects.extend(
             f"{style['styleName']}: {algo}"
             for style in self._coordinator.api.ambilight_styles.values()
-            for algo in style["algorithms"]
+            for algo in style.get("algorithms", {})]
         )
 
         effects.extend(
