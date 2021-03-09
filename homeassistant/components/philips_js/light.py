@@ -314,17 +314,18 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         if not self._tv.on:
             raise Exception("TV is not available")
 
-        current = self._tv.ambilight_current_configuration
-        if current and current["isExpert"]:
-            config: AmbilightCurrentConfiguration = {
+        config = self._tv.ambilight_current_configuration
+        if config is None or config["isExpert"]:
+            config = {
                 "styleName": "FOLLOW_VIDEO",
                 "isExpert": False,
                 "menuSetting": "Standard",
             }
-            if not await self._tv.setAmbilightCurrentConfiguration(config):
-                raise Exception("Failed to set ambilight configuration")
-        else:
-            if not await self._tv.setAmbilightMode("internal"):
-                raise Exception("Failed to set ambilight mode")
+
+        if await self._tv.setAmbilightMode("internal") is False:
+            raise Exception("Failed to set ambilight mode")
+
+        if await self._tv.setAmbilightCurrentConfiguration(config) is False:
+            raise Exception("Failed to set ambilight configuration")
 
         self.async_write_ha_state()
