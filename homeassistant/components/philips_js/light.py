@@ -184,11 +184,11 @@ class PhilipsTVLightEntity(CoordinatorEntity, LightEntity):
         return {
             "name": self._system["name"],
             "identifiers": {
-                (DOMAIN, self._system["serialnumber"]),
+                (DOMAIN, self._unique_id),
             },
-            "model": self._system["model"],
+            "model": self._system.get("model"),
             "manufacturer": "Philips",
-            "sw_version": self._system["softwareversion"],
+            "sw_version": self._system.get("softwareversion"),
         }
 
     def _update_from_coordinator(self):
