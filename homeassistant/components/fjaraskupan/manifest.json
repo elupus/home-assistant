@@ -1,0 +1,17 @@
+{
+  "domain": "fjaraskupan",
+  "name": "Fj\u00e4r\u00e5skupan",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/fjaraskupan",
+  "requirements": [
+    "bleak==0.12.0"
+  ],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@elupus"
+  ],
+  "iot_class": "local_polling"
+}
