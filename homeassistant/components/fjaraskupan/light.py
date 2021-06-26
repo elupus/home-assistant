@@ -6,10 +6,13 @@ from homeassistant.components.light import (
     COLOR_MODE_BRIGHTNESS,
     LightEntity,
 )
+from homeassistant.core import callback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.percentage import percentage_to_ordered_list_item
 
+from . import Coordinator
 from .const import DOMAIN
-from .device import COMMAND_LIGHT_ON_OFF, Device
+from .device import COMMAND_LIGHT_ON_OFF, CharacteristicCallbackData, Device
 
 ORDERED_DIM_LEVEL = ["1", "2", "3"]
 
@@ -17,19 +20,22 @@ ORDERED_DIM_LEVEL = ["1", "2", "3"]
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up tuya sensors dynamically through tuya discovery."""
 
-    device: Device = hass.data[DOMAIN][config_entry.entry_id]
-    await async_add_entities(Light(device))
+    coordinator: Coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    device: Device = coordinator.device
+    await async_add_entities(Light(coordinator, device))
 
 
-class Light(LightEntity):
+class Light(CoordinatorEntity[CharacteristicCallbackData], LightEntity):
     """Tuya fan devices."""
 
-    def __init__(self, device: Device) -> None:
+    def __init__(self, coordinator: Coordinator, device: Device) -> None:
         """Init Tuya fan device."""
+        super().__init__(coordinator)
         self._device = device
         self._attr_name = "Fjäråskupan"
         self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
+        self._attr_is_on = True
 
     async def async_turn_on(self, **kwargs):
         """Turn the light on."""
@@ -45,7 +51,14 @@ class Light(LightEntity):
         """Turn the entity off."""
         await self._device.send_command(COMMAND_LIGHT_ON_OFF)
 
-    @property
-    def is_on(self):
-        """Return true if the entity is on."""
-        return True
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle data update."""
+        if data := self.coordinator.data:
+            self._attr_is_on = data.light_on
+            self._attr_brightness = data.dim_level
+        else:
+            self._attr_is_on = False
+            self._attr_brightness = None
+
+        self.async_write_ha_state()
