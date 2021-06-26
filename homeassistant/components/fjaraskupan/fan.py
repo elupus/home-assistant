@@ -4,8 +4,8 @@ from __future__ import annotations
 from homeassistant.components.fan import SUPPORT_SET_SPEED, FanEntity
 from homeassistant.util.percentage import percentage_to_ordered_list_item
 
-from . import Device
 from .const import DOMAIN
+from .device import COMMAND_STOP_FAN, Device
 
 ORDERED_NAMED_FAN_SPEEDS = ["1", "2", "3", "4", "5", "6"]
 
@@ -31,7 +31,7 @@ class Fan(FanEntity):
         new_speed = percentage_to_ordered_list_item(
             ORDERED_NAMED_FAN_SPEEDS, percentage
         )
-        await self._device.set_fan_speed(int(new_speed))
+        await self._device.send_fan_speed(int(new_speed))
 
     async def async_turn_on(
         self,
@@ -48,11 +48,11 @@ class Fan(FanEntity):
                 ORDERED_NAMED_FAN_SPEEDS, percentage
             )
 
-        await self._device.set_fan_speed(int(new_speed))
+        await self._device.send_fan_speed(int(new_speed))
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
-        await self._device.set_fan_off()
+        await self._device.send_command(COMMAND_STOP_FAN)
 
     @property
     def speed_count(self) -> int:
