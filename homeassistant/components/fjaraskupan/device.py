@@ -1,8 +1,8 @@
 """Device communication library."""
 
 from dataclasses import dataclass
-from enum import IntEnum
 import logging
+from uuid import UUID
 
 from bleak import BleakClient
 
@@ -22,25 +22,12 @@ COMMAND_ACTIVATECARBONFILTER = "coal-ava"
 
 _LOGGER = logging.getLogger(__name__)
 
+UUID_SERVICE = UUID("{77a2bd49-1e5a-4961-bba1-21f34fa4bc7b}")
+UUID_RX = UUID("{23123e0a-1ad6-43a6-96ac-06f57995330d}")
+UUID_TX = UUID("{68ecc82c-928d-4af0-aa60-0d578ffb35f7}")
+UUID_CONFIG = UUID("{3e06fdc2-f432-404f-b321-dfa909f5c12c}")
 
-class CharacteristicCallbackEnum(IntEnum):
-    """Enumeration for data fields on characteristic callback."""
-
-    KEY_1 = 0
-    KEY_2 = 1
-    KEY_3 = 2
-    KEY_4 = 3
-    FANSTAGE = 4
-    LIGHT = 5
-    AFTER_COOKING_TIMER = 6
-    CARBON_FILTER_AVAILABLE = 7
-    GREASE_FILTER_SATURATION = 8
-    CARBON_FILTER_SATURATION = 9
-    DIMMER_1 = 10
-    DIMMER_2 = 11
-    DIMMER_3 = 12
-    PERIOD_HI = 13
-    PERIOD_LO = 14
+DEVICE_NAME = "COOKERHOOD_FJAR"
 
 
 @dataclass
@@ -52,8 +39,24 @@ class CharacteristicCallbackData:
     carbon_filter_available: bool
     fan_speed: int
     grease_filter_full: bool
+    carbon_filter_full: bool
     dim_level: int
     periodic_venting: int
+
+
+def parse_tx_characteristics_v1(data: str):
+    """Parse characteristics as android app."""
+
+    return CharacteristicCallbackData(
+        fan_speed=int(data[4]),
+        light_on=data[5] == "L",
+        after_venting_on=data[6] == "N",
+        carbon_filter_available=data[7] == "C",
+        grease_filter_full=data[8] == "F",
+        carbon_filter_full=data[9] == "K",
+        dim_level=int(data[10:13]),
+        periodic_venting=int(data[13:14]),
+    )
 
 
 class Device:
@@ -62,7 +65,8 @@ class Device:
     def __init__(self, client: BleakClient) -> None:
         """Initialize handler."""
         self.client = client
-        self._characteristics = 0x000B
+        self._tx_char = client.services.get_characteristic(UUID_TX)
+        self._rx_char = client.services.get_characteristic(UUID_RX)
         self._keycode = "1234"
 
     async def _callback(self, sender: int, databytes: bytearray):
@@ -73,53 +77,29 @@ class Device:
         assert len(data) == 15
         assert data[0:4] == self._keycode
 
-        result = CharacteristicCallbackData(
-            light_on=data[CharacteristicCallbackEnum.LIGHT] == "L",
-            after_venting_on=data[CharacteristicCallbackEnum.AFTER_COOKING_TIMER]
-            == "N",
-            carbon_filter_available=data[
-                CharacteristicCallbackEnum.CARBON_FILTER_AVAILABLE
-            ]
-            == "C",
-            fan_speed=int(data[CharacteristicCallbackEnum.FANSTAGE]),
-            grease_filter_full=data[CharacteristicCallbackEnum.GREASE_FILTER_SATURATION]
-            != "F",
-            dim_level=int(
-                data[
-                    CharacteristicCallbackEnum.DIMMER_1 : CharacteristicCallbackEnum.DIMMER_3
-                    + 1
-                ]
-            ),
-            periodic_venting=int(
-                data[
-                    CharacteristicCallbackEnum.PERIOD_HI : CharacteristicCallbackEnum.PERIOD_LO
-                ]
-            ),
-        )
+        result = parse_tx_characteristics_v1(data)
 
         _LOGGER.info("Characteristic callback result: %s", result)
 
     async def start(self):
         """Start listening for broadcasts."""
-        await self.client.start_notify(self._characteristics, self._callback)
+        await self.client.start_notify(self._tx_char, self._callback)
 
     async def stop(self):
         """Stop listening for broadcasts."""
-        await self.client.stop_notify(self._characteristics)
+        await self.client.stop_notify(self._tx_char)
 
     async def send_command(self, cmd):
-        """Send a given command."""
+        """Send given command."""
         data: str = self._keycode + cmd
-        await self.client.write_gatt_char(
-            self._characteristics, data.encode("ASCII"), True
-        )
+        await self.client.write_gatt_char(self._rx_char, data.encode("ASCII"), True)
 
     async def send_fan_speed(self, speed: int):
-        """Set a numbered fan speed."""
+        """Set numbered fan speed."""
         await self.send_command(COMMAND_FORMAT_FAN_SPEED_FORMAT.format(speed))
 
     async def send_periodic_venting(self, period: int):
-        """Set a periodic venting."""
+        """Set periodic venting."""
         await self.send_command(COMMAND_FORMAT_PERIODIC_VENTING.format(period))
 
     async def send_dim(self, level: int):
