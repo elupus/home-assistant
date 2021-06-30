@@ -49,6 +49,38 @@ class State:
     periodic_venting: int = 0
     periodic_venting_on: bool = False
 
+    def replace_from_tx_char(self, data: str):
+        """Update state based on tx characteristics."""
+        return replace(
+            self,
+            fan_speed=int(data[4]),
+            light_on=data[5] == "L",
+            after_venting_on=data[6] == "N",
+            carbon_filter_available=data[7] == "C",
+            grease_filter_full=data[8] == "F",
+            carbon_filter_full=data[9] == "K",
+            dim_level=_range_check_dim(int(data[10:13]), self.dim_level),
+            periodic_venting=_range_check_period(
+                int(data[13:14]), self.periodic_venting
+            ),
+        )
+
+    def replace_from_manufacture_data(self, data: bytes):
+        """Update state based on broadcasted data."""
+        return replace(
+            self,
+            fan_speed=int(data[8]),
+            after_venting_fan_speed=int(data[9]),
+            light_on=_bittest(data[10], 0),
+            after_venting_on=_bittest(data[10], 1),
+            peridic_venting_on=_bittest(data[10], 2),
+            grease_filter_full=_bittest(data[11], 0),
+            carbon_filter_full=_bittest(data[11], 1),
+            carbon_filter_available=_bittest(data[11], 2),
+            dim_level=_range_check_dim(data[13], self.dim_level),
+            periodic_venting=_range_check_period(data[14], self.periodic_venting),
+        )
+
 
 def _range_check_dim(value: int, fallback: int):
     if value >= 0 and value <= 100:
@@ -88,20 +120,9 @@ class Device:
         assert len(data) == 15
         assert data[0:4] == self._keycode
 
-        self.state = replace(
-            self.state,
-            fan_speed=int(data[4]),
-            light_on=data[5] == "L",
-            after_venting_on=data[6] == "N",
-            carbon_filter_available=data[7] == "C",
-            grease_filter_full=data[8] == "F",
-            carbon_filter_full=data[9] == "K",
-            dim_level=_range_check_dim(int(data[10:13]), self.state.dim_level),
-            periodic_venting=_range_check_period(
-                int(data[13:14]), self.state.periodic_venting
-            ),
-        )
-        _LOGGER.info("Characteristic callback result: %s", self.state)
+        self.state = self.state.replace_from_tx_char(data)
+
+        _LOGGER.debug("Characteristic callback result: %s", self.state)
 
     async def detection_callback(self, advertisement_data: AdvertisementData):
         """Handle scanner data."""
@@ -114,22 +135,13 @@ class Device:
                 "Missing manufacturer data in advertisement %s", advertisement_data
             )
             return
+
         if data[0:8] != b"HOODFJAR":
             _LOGGER.debug("Missing key in manufacturer data %s", data)
 
-        self.state = replace(
-            self.state,
-            fan_speed=int(data[8]),
-            after_venting_fan_speed=int(data[9]),
-            light_on=_bittest(data[10], 0),
-            after_venting_on=_bittest(data[10], 1),
-            peridic_venting_on=_bittest(data[10], 2),
-            grease_filter_full=_bittest(data[11], 0),
-            carbon_filter_full=_bittest(data[11], 1),
-            carbon_filter_available=_bittest(data[11], 2),
-            dim_level=_range_check_dim(data[13], self.state.dim_level),
-            periodic_venting=_range_check_period(data[14], self.state.periodic_venting),
-        )
+        self.state = self.state.replace_from_manufacture_data(data)
+
+        _LOGGER.debug("Detection callback result: %s", self.state)
 
     async def send_command(self, cmd):
         """Send given command."""
