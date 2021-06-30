@@ -2,29 +2,34 @@
 from __future__ import annotations
 
 from homeassistant.components.fan import SUPPORT_SET_SPEED, FanEntity
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.percentage import (
     ordered_list_item_to_percentage,
     percentage_to_ordered_list_item,
 )
 
-from . import Coordinator
+from . import Coordinator, EntryState
 from .const import DOMAIN
-from .device import COMMAND_STOP_FAN, CharacteristicCallbackData, Device
+from .device import COMMAND_STOP_FAN, Device, State
 
 ORDERED_NAMED_FAN_SPEEDS = ["1", "2", "3", "4", "5", "6"]
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up tuya sensors dynamically through tuya discovery."""
 
-    coordinator: Coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    device = coordinator.device
-    await async_add_entities(Fan(coordinator, device))
+    entrystate: EntryState = hass.data[DOMAIN][config_entry.entry_id]
+    async_add_entities([Fan(entrystate.coordinator, entrystate.device)])
 
 
-class Fan(CoordinatorEntity[CharacteristicCallbackData], FanEntity):
+class Fan(CoordinatorEntity[State], FanEntity):
     """Fan device."""
 
     def __init__(self, coordinator: Coordinator, device: Device) -> None:

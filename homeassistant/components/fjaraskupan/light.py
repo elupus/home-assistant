@@ -6,26 +6,31 @@ from homeassistant.components.light import (
     COLOR_MODE_BRIGHTNESS,
     LightEntity,
 )
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.percentage import percentage_to_ordered_list_item
 
-from . import Coordinator
+from . import Coordinator, EntryState
 from .const import DOMAIN
-from .device import COMMAND_LIGHT_ON_OFF, CharacteristicCallbackData, Device
+from .device import COMMAND_LIGHT_ON_OFF, Device, State
 
 ORDERED_DIM_LEVEL = ["1", "2", "3"]
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up tuya sensors dynamically through tuya discovery."""
 
-    coordinator: Coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    device: Device = coordinator.device
-    await async_add_entities(Light(coordinator, device))
+    entrystate: EntryState = hass.data[DOMAIN][config_entry.entry_id]
+    async_add_entities([Light(entrystate.coordinator, entrystate.device)])
 
 
-class Light(CoordinatorEntity[CharacteristicCallbackData], LightEntity):
+class Light(CoordinatorEntity[State], LightEntity):
     """Tuya fan devices."""
 
     def __init__(self, coordinator: Coordinator, device: Device) -> None:

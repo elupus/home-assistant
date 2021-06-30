@@ -1,10 +1,11 @@
 """Device communication library."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from uuid import UUID
 
 from bleak import BleakClient
+from bleak.backends.scanner import AdvertisementData
 
 COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-%01d-"
 COMMAND_FORMAT_DIM = "-Dim%03d-"
@@ -29,47 +30,57 @@ UUID_CONFIG = UUID("{3e06fdc2-f432-404f-b321-dfa909f5c12c}")
 
 DEVICE_NAME = "COOKERHOOD_FJAR"
 
+MANUFACTURER_ID1 = 12849
+MANUFACTURER_ID2 = 20296
+
 
 @dataclass
-class CharacteristicCallbackData:
+class State:
     """Data received from characteristics."""
 
-    light_on: bool
-    after_venting_on: bool
-    carbon_filter_available: bool
-    fan_speed: int
-    grease_filter_full: bool
-    carbon_filter_full: bool
-    dim_level: int
-    periodic_venting: int
+    light_on: bool = False
+    after_venting_fan_speed: int = 0
+    after_venting_on: bool = False
+    carbon_filter_available: bool = False
+    fan_speed: int = 0
+    grease_filter_full: bool = False
+    carbon_filter_full: bool = False
+    dim_level: int = 0
+    periodic_venting: int = 0
+    periodic_venting_on: bool = False
 
 
-def parse_tx_characteristics_v1(data: str):
-    """Parse characteristics as android app."""
+def _range_check_dim(value: int, fallback: int):
+    if value >= 0 and value <= 100:
+        return value
+    else:
+        return fallback
 
-    return CharacteristicCallbackData(
-        fan_speed=int(data[4]),
-        light_on=data[5] == "L",
-        after_venting_on=data[6] == "N",
-        carbon_filter_available=data[7] == "C",
-        grease_filter_full=data[8] == "F",
-        carbon_filter_full=data[9] == "K",
-        dim_level=int(data[10:13]),
-        periodic_venting=int(data[13:14]),
-    )
+
+def _range_check_period(value: int, fallback: int):
+    if value >= 0 and value < 60:
+        return value
+    else:
+        return fallback
+
+
+def _bittest(data: int, bit: int):
+    return (data & (1 << bit)) != 0
 
 
 class Device:
     """Communication handler."""
 
-    def __init__(self, client: BleakClient) -> None:
+    def __init__(self, client: BleakClient, keycode="1234") -> None:
         """Initialize handler."""
         self.client = client
-        self._tx_char = client.services.get_characteristic(UUID_TX)
-        self._rx_char = client.services.get_characteristic(UUID_RX)
-        self._keycode = "1234"
+        self.tx_char = client.services.get_characteristic(UUID_TX)
+        self.rx_char = client.services.get_characteristic(UUID_RX)
+        self.config_char = client.services.get_characteristic(UUID_CONFIG)
+        self._keycode = keycode
+        self.state = State()
 
-    async def _callback(self, sender: int, databytes: bytearray):
+    async def characteristic_callback(self, sender: int, databytes: bytearray):
         """Handle callback on characteristic change."""
         _LOGGER.debug("Characteristic callback: %s", databytes)
 
@@ -77,22 +88,53 @@ class Device:
         assert len(data) == 15
         assert data[0:4] == self._keycode
 
-        result = parse_tx_characteristics_v1(data)
+        self.state = replace(
+            self.state,
+            fan_speed=int(data[4]),
+            light_on=data[5] == "L",
+            after_venting_on=data[6] == "N",
+            carbon_filter_available=data[7] == "C",
+            grease_filter_full=data[8] == "F",
+            carbon_filter_full=data[9] == "K",
+            dim_level=_range_check_dim(int(data[10:13]), self.state.dim_level),
+            periodic_venting=_range_check_period(
+                int(data[13:14]), self.state.periodic_venting
+            ),
+        )
+        _LOGGER.info("Characteristic callback result: %s", self.state)
 
-        _LOGGER.info("Characteristic callback result: %s", result)
+    async def detection_callback(self, advertisement_data: AdvertisementData):
+        """Handle scanner data."""
 
-    async def start(self):
-        """Start listening for broadcasts."""
-        await self.client.start_notify(self._tx_char, self._callback)
+        data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID1)
+        if data is None:
+            data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID2)
+        if data is None:
+            _LOGGER.debug(
+                "Missing manufacturer data in advertisement %s", advertisement_data
+            )
+            return
+        if data[0:8] != b"HOODFJAR":
+            _LOGGER.debug("Missing key in manufacturer data %s", data)
 
-    async def stop(self):
-        """Stop listening for broadcasts."""
-        await self.client.stop_notify(self._tx_char)
+        self.state = replace(
+            self.state,
+            fan_speed=int(data[8]),
+            after_venting_fan_speed=int(data[9]),
+            light_on=_bittest(data[10], 0),
+            after_venting_on=_bittest(data[10], 1),
+            peridic_venting_on=_bittest(data[10], 2),
+            grease_filter_full=_bittest(data[11], 0),
+            carbon_filter_full=_bittest(data[11], 1),
+            carbon_filter_available=_bittest(data[11], 2),
+            dim_level=_range_check_dim(data[13], self.state.dim_level),
+            periodic_venting=_range_check_period(data[14], self.state.periodic_venting),
+        )
 
     async def send_command(self, cmd):
         """Send given command."""
         data: str = self._keycode + cmd
-        await self.client.write_gatt_char(self._rx_char, data.encode("ASCII"), True)
+        await self.client.write_gatt_char(self.rx_char, data.encode("ASCII"), True)
 
     async def send_fan_speed(self, speed: int):
         """Set numbered fan speed."""
