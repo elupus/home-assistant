@@ -69,7 +69,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     step_id="user",
                     data_schema=vol.Schema(
                         {
-                            vol.Required("mac"): vol.In(devices),
+                            vol.Required("address"): vol.In(devices),
                         }
                     ),
                 )
@@ -78,7 +78,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors = {}
 
-        self.async_set_unique_id(user_input["mac"])
+        self.async_set_unique_id(user_input["address"])
         self._abort_if_unique_id_configured()
 
         try:

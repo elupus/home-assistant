@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "data": {
-          "mac": "MAC"
+          "address": "Device Address"
         }
       }
     },

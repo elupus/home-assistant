@@ -75,7 +75,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     scanner = async_startup_scanner(hass)
 
-    address: str = entry.data["mac"]
+    address: str = entry.data["address"]
     client = BleakClient(address)
     try:
         await client.connect()
