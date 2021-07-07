@@ -35,7 +35,7 @@ MANUFACTURER_ID1 = 12849
 MANUFACTURER_ID2 = 20296
 
 
-@dataclass
+@dataclass(frozen=True)
 class State:
     """Data received from characteristics."""
 
