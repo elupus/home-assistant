@@ -112,7 +112,7 @@ class Device:
         self._keycode = keycode
         self.state = State()
 
-    async def characteristic_callback(self, sender: int, databytes: bytearray):
+    async def characteristic_callback(self, databytes: bytearray):
         """Handle callback on characteristic change."""
         _LOGGER.debug("Characteristic callback: %s", databytes)
 

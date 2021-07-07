@@ -33,28 +33,7 @@ class EntryState:
     scanner: BleakScanner
     client: BleakClient
     device: Device
-    coordinator: Coordinator
-
-
-class Coordinator(DataUpdateCoordinator[State]):
-    """Update coordinator for device."""
-
-    def __init__(self, hass: HomeAssistant, device: Device) -> None:
-        """Initialize update coordinator."""
-        super().__init__(
-            hass, logger=_LOGGER, name="Fjäråskupan Updater", update_interval=None
-        )
-        self.device = device
-
-    def detection_callback(self, advertisement_data: AdvertisementData):
-        """Handle callback when we get new data."""
-        self.device.detection_callback(advertisement_data)
-        self.async_set_updated_data(self.device.state)
-
-    def characteristic_callback(self, sender: int, databytes: bytearray):
-        """Handle callback on changes to characteristics."""
-        self.device.characteristic_callback(sender, databytes)
-        self.async_set_updated_data(self.device.state)
+    coordinator: DataUpdateCoordinator[State]
 
 
 async def async_startup_scanner(hass):
@@ -83,15 +62,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady from exc
 
     device = Device(client)
-    coordinator = Coordinator(hass, device)
 
-    def detection_handler(ble_device: BLEDevice, advertisement_data: AdvertisementData):
+    async def async_update_data():
+        """Handle an explicit update request."""
+        databytes = await client.read_gatt_char(device.tx_char)
+        device.characteristic_callback(databytes)
+        return device.state
+
+    coordinator = DataUpdateCoordinator[State](
+        hass,
+        logger=_LOGGER,
+        name="Fjäråskupan Updater",
+        update_interval=None,
+        update_method=async_update_data,
+    )
+
+    def detection_callback(
+        ble_device: BLEDevice, advertisement_data: AdvertisementData
+    ):
+        """Handle callback when we get new data."""
         if ble_device.address == address:
-            coordinator.detection_callback(advertisement_data)
+            device.detection_callback(advertisement_data)
+            coordinator.async_set_updated_data(device.state)
 
-    async_dispatcher_connect(hass, DISPATCH_DETECTION, detection_handler)
+    def characteristic_callback(sender: int, databytes: bytearray):
+        """Handle callback on changes to characteristics."""
+        device.characteristic_callback(databytes)
+        coordinator.async_set_updated_data(device.state)
 
-    await client.start_notify(device.tx_char, coordinator.characteristic_callback)
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, DISPATCH_DETECTION, detection_callback)
+    )
+
+    await client.start_notify(device.tx_char, characteristic_callback)
 
     hass.data[DOMAIN][entry.entry_id] = EntryState(scanner, client, device, coordinator)
 
@@ -105,6 +108,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         entrystate: EntryState = hass.data[DOMAIN].pop(entry.entry_id)
+        await entrystate.client.stop_notify(entrystate.device.tx_char)
         await entrystate.client.disconnect()
         await entrystate.scanner.stop()
 
