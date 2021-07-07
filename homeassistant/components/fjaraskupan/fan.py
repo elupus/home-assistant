@@ -5,13 +5,16 @@ from homeassistant.components.fan import SUPPORT_SET_SPEED, FanEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 from homeassistant.util.percentage import (
     ordered_list_item_to_percentage,
     percentage_to_ordered_list_item,
 )
 
-from . import Coordinator, EntryState
+from . import EntryState
 from .const import DOMAIN
 from .device import COMMAND_STOP_FAN, Device, State
 
@@ -32,13 +35,16 @@ async def async_setup_entry(
 class Fan(CoordinatorEntity[State], FanEntity):
     """Fan device."""
 
-    def __init__(self, coordinator: Coordinator, device: Device) -> None:
+    def __init__(
+        self, coordinator: DataUpdateCoordinator[State], device: Device
+    ) -> None:
         """Init fan device."""
         super().__init__(coordinator)
         self._device = device
         self._default_on_speed = 100
         self._percentage: int = 0
         self._attr_name = "Fjäråskupan"
+        self._attr_unique_id = device.address
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set speed."""

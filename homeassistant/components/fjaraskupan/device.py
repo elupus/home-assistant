@@ -114,6 +114,11 @@ class Device:
         self._keycode = keycode
         self.state = State()
 
+    @property
+    def address(self):
+        """Return address of the device."""
+        return str(self.client.address)
+
     async def characteristic_callback(self, data: bytearray):
         """Handle callback on characteristic change."""
         _LOGGER.debug("Characteristic callback: %s", data)

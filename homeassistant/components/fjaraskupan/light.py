@@ -1,4 +1,4 @@
-"""Support for Tuya fans."""
+"""Support for lights."""
 from __future__ import annotations
 
 from homeassistant.components.light import (
@@ -9,10 +9,13 @@ from homeassistant.components.light import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 from homeassistant.util.percentage import percentage_to_ordered_list_item
 
-from . import Coordinator, EntryState
+from . import EntryState
 from .const import DOMAIN
 from .device import COMMAND_LIGHT_ON_OFF, Device, State
 
@@ -24,16 +27,18 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up tuya sensors dynamically through tuya discovery."""
+    """Set up entry."""
 
     entrystate: EntryState = hass.data[DOMAIN][config_entry.entry_id]
     async_add_entities([Light(entrystate.coordinator, entrystate.device)])
 
 
 class Light(CoordinatorEntity[State], LightEntity):
-    """Tuya fan devices."""
+    """Light device."""
 
-    def __init__(self, coordinator: Coordinator, device: Device) -> None:
+    def __init__(
+        self, coordinator: DataUpdateCoordinator[State], device: Device
+    ) -> None:
         """Init Tuya fan device."""
         super().__init__(coordinator)
         self._device = device
@@ -41,6 +46,7 @@ class Light(CoordinatorEntity[State], LightEntity):
         self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
         self._attr_is_on = True
+        self._attr_unique_id = device.address
 
     async def async_turn_on(self, **kwargs):
         """Turn the light on."""

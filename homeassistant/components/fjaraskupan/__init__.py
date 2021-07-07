@@ -21,7 +21,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import DISPATCH_DETECTION, DOMAIN
 from .device import Device, State
 
-PLATFORMS = ["fan", "light"]
+PLATFORMS = ["fan", "light", "sensor"]
 
 _LOGGER = logging.getLogger(__name__)
 
