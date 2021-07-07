@@ -29,6 +29,7 @@ UUID_TX = UUID("{68ecc82c-928d-4af0-aa60-0d578ffb35f7}")
 UUID_CONFIG = UUID("{3e06fdc2-f432-404f-b321-dfa909f5c12c}")
 
 DEVICE_NAME = "COOKERHOOD_FJAR"
+ANNOUNCE_PREFIX = b"HOODFJAR"
 
 MANUFACTURER_ID1 = 12849
 MANUFACTURER_ID2 = 20296
@@ -49,8 +50,9 @@ class State:
     periodic_venting: int = 0
     periodic_venting_on: bool = False
 
-    def replace_from_tx_char(self, data: str):
+    def replace_from_tx_char(self, databytes: bytes):
         """Update state based on tx characteristics."""
+        data = databytes.decode("ASCII")
         return replace(
             self,
             fan_speed=int(data[4]),
@@ -103,7 +105,7 @@ def _bittest(data: int, bit: int):
 class Device:
     """Communication handler."""
 
-    def __init__(self, client: BleakClient, keycode="1234") -> None:
+    def __init__(self, client: BleakClient, keycode=b"1234") -> None:
         """Initialize handler."""
         self.client = client
         self.tx_char = client.services.get_characteristic(UUID_TX)
@@ -112,13 +114,13 @@ class Device:
         self._keycode = keycode
         self.state = State()
 
-    async def characteristic_callback(self, databytes: bytearray):
+    async def characteristic_callback(self, data: bytearray):
         """Handle callback on characteristic change."""
-        _LOGGER.debug("Characteristic callback: %s", databytes)
+        _LOGGER.debug("Characteristic callback: %s", data)
 
-        data = databytes.decode("ASCII")
-        assert len(data) == 15
-        assert data[0:4] == self._keycode
+        if data[0:4] != self._keycode:
+            _LOGGER.warning("Wrong keycode in data %s", data)
+            return
 
         self.state = self.state.replace_from_tx_char(data)
 
@@ -130,14 +132,16 @@ class Device:
         data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID1)
         if data is None:
             data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID2)
+
         if data is None:
-            _LOGGER.debug(
+            _LOGGER.warning(
                 "Missing manufacturer data in advertisement %s", advertisement_data
             )
             return
 
-        if data[0:8] != b"HOODFJAR":
+        if data[0:8] != ANNOUNCE_PREFIX:
             _LOGGER.debug("Missing key in manufacturer data %s", data)
+            return
 
         self.state = self.state.replace_from_manufacture_data(data)
 
