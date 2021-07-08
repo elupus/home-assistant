@@ -42,16 +42,18 @@ class Fan(CoordinatorEntity[State], FanEntity):
         super().__init__(coordinator)
         self._device = device
         self._default_on_speed = 100
-        self._percentage: int = 0
         self._attr_name = "Fjäråskupan"
         self._attr_unique_id = device.address
+        self._update_from_device_data(coordinator.data)
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set speed."""
         new_speed = percentage_to_ordered_list_item(
             ORDERED_NAMED_FAN_SPEEDS, percentage
         )
+        self._percentage = percentage
         await self._device.send_fan_speed(int(new_speed))
+        self.async_write_ha_state()
 
     async def async_turn_on(
         self,
@@ -72,10 +74,13 @@ class Fan(CoordinatorEntity[State], FanEntity):
         )
 
         await self._device.send_fan_speed(int(new_speed))
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
         await self._device.send_command(COMMAND_STOP_FAN)
+        self._percentage = 0
+        self.async_write_ha_state()
 
     @property
     def speed_count(self) -> int:
@@ -92,17 +97,23 @@ class Fan(CoordinatorEntity[State], FanEntity):
         """Flag supported features."""
         return SUPPORT_SET_SPEED
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle data update."""
+    @property
+    def is_on(self) -> bool:
+        """Return true if fan is on."""
+        return self._percentage != 0
 
-        if data := self.coordinator.data:
-            self._attr_is_on = data.fan_speed != 0
+    def _update_from_device_data(self, data: State | None) -> None:
+        """Handle data update."""
+        if data and data.fan_speed:
             self._percentage = ordered_list_item_to_percentage(
                 ORDERED_NAMED_FAN_SPEEDS, str(data.fan_speed)
             )
         else:
-            self._attr_is_on = False
             self._percentage = 0
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle data update."""
+
+        self._update_from_device_data(self.coordinator.data)
         self.async_write_ha_state()

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 import logging
 
 from bleak import BleakClient, BleakScanner
@@ -10,7 +11,7 @@ from bleak.backends.scanner import AdvertisementData
 from bleak.exc import BleakError
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
@@ -19,7 +20,7 @@ from homeassistant.helpers.dispatcher import (
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DISPATCH_DETECTION, DOMAIN
-from .device import Device, State
+from .device import DEVICE_NAME, Device, State
 
 PLATFORMS = ["fan", "light", "sensor"]
 
@@ -41,9 +42,14 @@ async def async_startup_scanner(hass):
     scanner = BleakScanner()
     await scanner.start()
 
-    def detection_callback(device: BLEDevice, advertisement_data: AdvertisementData):
-        _LOGGER.debug("Detection: %s - %s", device, advertisement_data)
-        async_dispatcher_send(hass, DISPATCH_DETECTION, device, advertisement_data)
+    async def detection_callback(
+        device: BLEDevice, advertisement_data: AdvertisementData
+    ):
+        if device.name == DEVICE_NAME:
+            _LOGGER.debug(
+                "Detection: %s %s - %s", device.name, device, advertisement_data
+            )
+            async_dispatcher_send(hass, DISPATCH_DETECTION, device, advertisement_data)
 
     scanner.register_detection_callback(detection_callback)
     return scanner
@@ -52,53 +58,68 @@ async def async_startup_scanner(hass):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Fjäråskupan from a config entry."""
 
-    scanner = async_startup_scanner(hass)
-
-    address: str = entry.data["address"]
-    client = BleakClient(address)
+    scanner = await async_startup_scanner(hass)
     try:
-        await client.connect()
-    except (BleakError, TimeoutError) as exc:
-        raise ConfigEntryNotReady from exc
+        address: str = entry.data["address"]
+        client = BleakClient(address)
+        try:
+            await client.connect()
+        except (BleakError, TimeoutError) as exc:
+            raise ConfigEntryNotReady from exc
 
-    device = Device(client)
+        device = Device(client)
 
-    async def async_update_data():
-        """Handle an explicit update request."""
-        databytes = await client.read_gatt_char(device.tx_char)
-        device.characteristic_callback(databytes)
-        return device.state
+        async def async_update_data():
+            """Handle an explicit update request."""
+            async with device.lock:
+                databytes = await client.read_gatt_char(device.rx_char)
+                device.characteristic_callback(databytes)
+            return device.state
 
-    coordinator = DataUpdateCoordinator[State](
-        hass,
-        logger=_LOGGER,
-        name="Fjäråskupan Updater",
-        update_interval=None,
-        update_method=async_update_data,
-    )
+        coordinator = DataUpdateCoordinator[State](
+            hass,
+            logger=_LOGGER,
+            name="Fjäråskupan Updater",
+            update_interval=timedelta(seconds=60),
+            update_method=async_update_data,
+        )
 
-    def detection_callback(
-        ble_device: BLEDevice, advertisement_data: AdvertisementData
-    ):
-        """Handle callback when we get new data."""
-        if ble_device.address == address:
-            device.detection_callback(advertisement_data)
+        @callback
+        def detection_callback(
+            ble_device: BLEDevice, advertisement_data: AdvertisementData
+        ):
+            """Handle callback when we get new data."""
+            if ble_device.address == address:
+                device.detection_callback(advertisement_data)
+                coordinator.async_set_updated_data(device.state)
+
+        @callback
+        def characteristic_callback(sender: int, databytes: bytearray):
+            """Handle callback on changes to characteristics."""
+            device.characteristic_callback(databytes)
             coordinator.async_set_updated_data(device.state)
 
-    def characteristic_callback(sender: int, databytes: bytearray):
-        """Handle callback on changes to characteristics."""
-        device.characteristic_callback(databytes)
-        coordinator.async_set_updated_data(device.state)
+        entry.async_on_unload(
+            async_dispatcher_connect(hass, DISPATCH_DETECTION, detection_callback)
+        )
 
-    entry.async_on_unload(
-        async_dispatcher_connect(hass, DISPATCH_DETECTION, detection_callback)
-    )
+        if device.tx_char:
+            await client.start_notify(device.rx_char, characteristic_callback)
+        else:
+            _LOGGER.debug("Unable to find tx characteristics, skipping notify")
 
-    await client.start_notify(device.tx_char, characteristic_callback)
+        hass.data.setdefault(DOMAIN, {})
+        hass.data[DOMAIN][entry.entry_id] = EntryState(
+            scanner, client, device, coordinator
+        )
 
-    hass.data[DOMAIN][entry.entry_id] = EntryState(scanner, client, device, coordinator)
+        await coordinator.async_config_entry_first_refresh()
 
-    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+        hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+
+    except Exception:
+        await scanner.stop()
+        raise
 
     return True
 

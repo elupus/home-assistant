@@ -13,13 +13,10 @@ from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
-from homeassistant.util.percentage import percentage_to_ordered_list_item
 
 from . import EntryState
 from .const import DOMAIN
 from .device import COMMAND_LIGHT_ON_OFF, Device, State
-
-ORDERED_DIM_LEVEL = ["1", "2", "3"]
 
 
 async def async_setup_entry(
@@ -45,31 +42,41 @@ class Light(CoordinatorEntity[State], LightEntity):
         self._attr_name = "Fjäråskupan"
         self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
-        self._attr_is_on = True
         self._attr_unique_id = device.address
+        self._update_from_device_data(coordinator.data)
 
     async def async_turn_on(self, **kwargs):
         """Turn the light on."""
         if ATTR_BRIGHTNESS in kwargs:
-            level = percentage_to_ordered_list_item(
-                ORDERED_DIM_LEVEL, kwargs[ATTR_BRIGHTNESS]
-            )
-            await self._device.send_dim(int(level))
+            self._attr_brightness = kwargs[ATTR_BRIGHTNESS]
+            self._attr_is_on = True
+            await self._device.send_dim(int(self._attr_brightness * (100.0 / 255.0)))
         else:
-            await self._device.send_command(COMMAND_LIGHT_ON_OFF)
+            if not self._attr_is_on:
+                await self._device.send_command(COMMAND_LIGHT_ON_OFF)
+                self._attr_is_on = True
+                self._attr_brightness = 255
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
-        await self._device.send_command(COMMAND_LIGHT_ON_OFF)
+        if self._attr_is_on:
+            await self._device.send_command(COMMAND_LIGHT_ON_OFF)
+            self._attr_is_on = False
+            self._attr_brightness = 0
+        self.async_write_ha_state()
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
+    def _update_from_device_data(self, data: State | None) -> None:
         """Handle data update."""
-        if data := self.coordinator.data:
+        if data:
             self._attr_is_on = data.light_on
-            self._attr_brightness = data.dim_level
+            self._attr_brightness = int(data.dim_level * (255.0 / 100.0))
         else:
             self._attr_is_on = False
             self._attr_brightness = None
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle data update."""
+        self._update_from_device_data(self.coordinator.data)
         self.async_write_ha_state()

@@ -1,5 +1,6 @@
 """Device communication library."""
 
+import asyncio
 from dataclasses import dataclass, replace
 import logging
 from uuid import UUID
@@ -7,9 +8,9 @@ from uuid import UUID
 from bleak import BleakClient
 from bleak.backends.scanner import AdvertisementData
 
-COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-%01d-"
-COMMAND_FORMAT_DIM = "-Dim%03d-"
-COMMAND_FORMAT_PERIODIC_VENTING = "Period%02d"
+COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-{:01d}-"
+COMMAND_FORMAT_DIM = "-Dim{:03d}-"
+COMMAND_FORMAT_PERIODIC_VENTING = "Period{:02d}"
 
 COMMAND_STOP_FAN = "Luft-Aus"
 COMMAND_LIGHT_ON_OFF = "Kochfeld"
@@ -113,13 +114,14 @@ class Device:
         self.config_char = client.services.get_characteristic(UUID_CONFIG)
         self._keycode = keycode
         self.state = State()
+        self.lock = asyncio.Lock()
 
     @property
     def address(self):
         """Return address of the device."""
         return str(self.client.address)
 
-    async def characteristic_callback(self, data: bytearray):
+    def characteristic_callback(self, data: bytearray):
         """Handle callback on characteristic change."""
         _LOGGER.debug("Characteristic callback: %s", data)
 
@@ -131,7 +133,7 @@ class Device:
 
         _LOGGER.debug("Characteristic callback result: %s", self.state)
 
-    async def detection_callback(self, advertisement_data: AdvertisementData):
+    def detection_callback(self, advertisement_data: AdvertisementData):
         """Handle scanner data."""
 
         data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID1)
@@ -154,8 +156,9 @@ class Device:
 
     async def send_command(self, cmd):
         """Send given command."""
-        data: str = self._keycode + cmd
-        await self.client.write_gatt_char(self.rx_char, data.encode("ASCII"), True)
+        async with self.lock:
+            data: bytes = self._keycode + cmd.encode("ASCII")
+            await self.client.write_gatt_char(self.rx_char, data, True)
 
     async def send_fan_speed(self, speed: int):
         """Set numbered fan speed."""
