@@ -49,7 +49,6 @@ class State:
     dim_level: int = 0
     periodic_venting: int = 0
     periodic_venting_on: bool = False
-    rssi: int = 0
 
     def replace_from_tx_char(self, databytes: bytes):
         """Update state based on tx characteristics."""
@@ -164,14 +163,24 @@ class Device:
                 data = self._keycode + cmd.encode("ASCII")
                 await client.write_gatt_char(UUID_RX, data, True)
 
+        if cmd == COMMAND_STOP_FAN:
+            self.state = replace(self.state, fan_speed=0)
+        elif cmd == COMMAND_LIGHT_ON_OFF:
+            self.state = replace(self.state, light_on=not self.state.light_on)
+        elif cmd == COMMAND_STOP_FAN:
+            self.state = replace(self.state, fan_speed=0)
+
     async def send_fan_speed(self, speed: int):
         """Set numbered fan speed."""
         await self.send_command(COMMAND_FORMAT_FAN_SPEED_FORMAT.format(speed))
+        self.state = replace(self.state, fan_speed=speed)
 
     async def send_periodic_venting(self, period: int):
         """Set periodic venting."""
         await self.send_command(COMMAND_FORMAT_PERIODIC_VENTING.format(period))
+        self.state = replace(self.state, periodic_venting=period)
 
     async def send_dim(self, level: int):
         """Ask to dim to a certain level."""
         await self.send_command(COMMAND_FORMAT_DIM.format(level))
+        self.state = replace(self.state, dim_level=level)

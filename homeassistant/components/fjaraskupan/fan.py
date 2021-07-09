@@ -59,9 +59,8 @@ class Fan(CoordinatorEntity[State], FanEntity):
         new_speed = percentage_to_ordered_list_item(
             ORDERED_NAMED_FAN_SPEEDS, percentage
         )
-        self._percentage = percentage
         await self._device.send_fan_speed(int(new_speed))
-        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(self._device.state)
 
     async def async_turn_on(
         self,
@@ -72,23 +71,17 @@ class Fan(CoordinatorEntity[State], FanEntity):
     ) -> None:
         """Turn on the fan."""
 
-        if percentage is not None:
-            self._percentage = percentage
-        else:
-            self._percentage = self._default_on_speed
-
         new_speed = percentage_to_ordered_list_item(
             ORDERED_NAMED_FAN_SPEEDS, self._percentage
         )
 
         await self._device.send_fan_speed(int(new_speed))
-        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(self._device.state)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the entity off."""
         await self._device.send_command(COMMAND_STOP_FAN)
-        self._percentage = 0
-        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(self._device.state)
 
     @property
     def speed_count(self) -> int:
