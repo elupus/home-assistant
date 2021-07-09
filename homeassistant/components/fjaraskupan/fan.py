@@ -4,6 +4,7 @@ from __future__ import annotations
 from homeassistant.components.fan import SUPPORT_SET_SPEED, FanEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -18,7 +19,7 @@ from . import EntryState
 from .const import DOMAIN
 from .device import COMMAND_STOP_FAN, Device, State
 
-ORDERED_NAMED_FAN_SPEEDS = ["1", "2", "3", "4", "5", "6"]
+ORDERED_NAMED_FAN_SPEEDS = ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 
 async def async_setup_entry(
@@ -29,21 +30,28 @@ async def async_setup_entry(
     """Set up tuya sensors dynamically through tuya discovery."""
 
     entrystate: EntryState = hass.data[DOMAIN][config_entry.entry_id]
-    async_add_entities([Fan(entrystate.coordinator, entrystate.device)])
+    async_add_entities(
+        [Fan(entrystate.coordinator, entrystate.device, entrystate.device_info)]
+    )
 
 
 class Fan(CoordinatorEntity[State], FanEntity):
     """Fan device."""
 
     def __init__(
-        self, coordinator: DataUpdateCoordinator[State], device: Device
+        self,
+        coordinator: DataUpdateCoordinator[State],
+        device: Device,
+        device_info: DeviceInfo,
     ) -> None:
         """Init fan device."""
         super().__init__(coordinator)
         self._device = device
-        self._default_on_speed = 100
-        self._attr_name = "Fjäråskupan"
+        self._default_on_speed = 25
+        self._attr_name = device_info["name"]
         self._attr_unique_id = device.address
+        self._attr_device_info = device_info
+        self._percentage = 0
         self._update_from_device_data(coordinator.data)
 
     async def async_set_percentage(self, percentage: int) -> None:

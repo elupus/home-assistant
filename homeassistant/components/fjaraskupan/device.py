@@ -6,6 +6,7 @@ import logging
 from uuid import UUID
 
 from bleak import BleakClient
+from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
 COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-{:01d}-"
@@ -31,9 +32,7 @@ UUID_CONFIG = UUID("{3e06fdc2-f432-404f-b321-dfa909f5c12c}")
 
 DEVICE_NAME = "COOKERHOOD_FJAR"
 ANNOUNCE_PREFIX = b"HOODFJAR"
-
-MANUFACTURER_ID1 = 12849
-MANUFACTURER_ID2 = 20296
+ANNOUNCE_MANUFACTURER = int.from_bytes(ANNOUNCE_PREFIX[0:2], "little")
 
 
 @dataclass(frozen=True)
@@ -50,6 +49,7 @@ class State:
     dim_level: int = 0
     periodic_venting: int = 0
     periodic_venting_on: bool = False
+    rssi: int = 0
 
     def replace_from_tx_char(self, databytes: bytes):
         """Update state based on tx characteristics."""
@@ -76,7 +76,7 @@ class State:
             after_venting_fan_speed=int(data[9]),
             light_on=_bittest(data[10], 0),
             after_venting_on=_bittest(data[10], 1),
-            peridic_venting_on=_bittest(data[10], 2),
+            periodic_venting_on=_bittest(data[10], 2),
             grease_filter_full=_bittest(data[11], 0),
             carbon_filter_full=_bittest(data[11], 1),
             carbon_filter_available=_bittest(data[11], 2),
@@ -106,12 +106,9 @@ def _bittest(data: int, bit: int):
 class Device:
     """Communication handler."""
 
-    def __init__(self, client: BleakClient, keycode=b"1234") -> None:
+    def __init__(self, device: BLEDevice, keycode=b"1234") -> None:
         """Initialize handler."""
-        self.client = client
-        self.tx_char = client.services.get_characteristic(UUID_TX)
-        self.rx_char = client.services.get_characteristic(UUID_RX)
-        self.config_char = client.services.get_characteristic(UUID_CONFIG)
+        self.device = device
         self._keycode = keycode
         self.state = State()
         self.lock = asyncio.Lock()
@@ -119,7 +116,7 @@ class Device:
     @property
     def address(self):
         """Return address of the device."""
-        return str(self.client.address)
+        return str(self.device.address)
 
     def characteristic_callback(self, data: bytearray):
         """Handle callback on characteristic change."""
@@ -135,16 +132,15 @@ class Device:
 
     def detection_callback(self, advertisement_data: AdvertisementData):
         """Handle scanner data."""
-
-        data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID1)
+        data = advertisement_data.manufacturer_data.get(ANNOUNCE_MANUFACTURER)
         if data is None:
-            data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID2)
-
-        if data is None:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Missing manufacturer data in advertisement %s", advertisement_data
             )
             return
+        # Recover full manufacturer data. It's breakinging standard by
+        # not providing a manufacturer prefix here.
+        data = ANNOUNCE_PREFIX[0:2] + data
 
         if data[0:8] != ANNOUNCE_PREFIX:
             _LOGGER.debug("Missing key in manufacturer data %s", data)
@@ -154,11 +150,19 @@ class Device:
 
         _LOGGER.debug("Detection callback result: %s", self.state)
 
+    async def update(self):
+        """Update internal state."""
+        async with self.lock:
+            async with BleakClient(self.device) as client:
+                databytes = await client.read_gatt_char(UUID_RX)
+                self.characteristic_callback(databytes)
+
     async def send_command(self, cmd):
         """Send given command."""
         async with self.lock:
-            data: bytes = self._keycode + cmd.encode("ASCII")
-            await self.client.write_gatt_char(self.rx_char, data, True)
+            async with BleakClient(self.device) as client:
+                data = self._keycode + cmd.encode("ASCII")
+                await client.write_gatt_char(UUID_RX, data, True)
 
     async def send_fan_speed(self, speed: int):
         """Set numbered fan speed."""

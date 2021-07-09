@@ -5,10 +5,9 @@ from dataclasses import dataclass
 from datetime import timedelta
 import logging
 
-from bleak import BleakClient, BleakScanner
+from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
-from bleak.exc import BleakError
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -17,12 +16,13 @@ from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
     async_dispatcher_send,
 )
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DISPATCH_DETECTION, DOMAIN
 from .device import DEVICE_NAME, Device, State
 
-PLATFORMS = ["fan", "light", "sensor"]
+PLATFORMS = ["fan", "light", "binary_sensor"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,9 +32,9 @@ class EntryState:
     """Store state of config entry."""
 
     scanner: BleakScanner
-    client: BleakClient
     device: Device
     coordinator: DataUpdateCoordinator[State]
+    device_info: DeviceInfo
 
 
 async def async_startup_scanner(hass):
@@ -57,23 +57,18 @@ async def async_startup_scanner(hass):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Fjäråskupan from a config entry."""
+    address: str = entry.data["address"]
+    ble_device = await BleakScanner.find_device_by_address(address)
+    if ble_device is None:
+        raise ConfigEntryNotReady("Can't find device")
 
     scanner = await async_startup_scanner(hass)
     try:
-        address: str = entry.data["address"]
-        client = BleakClient(address)
-        try:
-            await client.connect()
-        except (BleakError, TimeoutError) as exc:
-            raise ConfigEntryNotReady from exc
-
-        device = Device(client)
+        device = Device(ble_device)
 
         async def async_update_data():
             """Handle an explicit update request."""
-            async with device.lock:
-                databytes = await client.read_gatt_char(device.rx_char)
-                device.characteristic_callback(databytes)
+            await device.update()
             return device.state
 
         coordinator = DataUpdateCoordinator[State](
@@ -93,27 +88,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 device.detection_callback(advertisement_data)
                 coordinator.async_set_updated_data(device.state)
 
-        @callback
-        def characteristic_callback(sender: int, databytes: bytearray):
-            """Handle callback on changes to characteristics."""
-            device.characteristic_callback(databytes)
-            coordinator.async_set_updated_data(device.state)
-
         entry.async_on_unload(
             async_dispatcher_connect(hass, DISPATCH_DETECTION, detection_callback)
         )
 
-        if device.tx_char:
-            await client.start_notify(device.rx_char, characteristic_callback)
-        else:
-            _LOGGER.debug("Unable to find tx characteristics, skipping notify")
+        await coordinator.async_config_entry_first_refresh()
+
+        device_info: DeviceInfo = {
+            "identifiers": {(DOMAIN, address)},
+            "manufacturer": "Fjäråskupan",
+            "name": "Fjäråskupan",
+        }
 
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = EntryState(
-            scanner, client, device, coordinator
+            scanner, device, coordinator, device_info
         )
-
-        await coordinator.async_config_entry_first_refresh()
 
         hass.config_entries.async_setup_platforms(entry, PLATFORMS)
 
@@ -129,8 +119,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         entrystate: EntryState = hass.data[DOMAIN].pop(entry.entry_id)
-        await entrystate.client.stop_notify(entrystate.device.tx_char)
-        await entrystate.client.disconnect()
         await entrystate.scanner.stop()
 
     return unload_ok

@@ -8,6 +8,7 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -27,22 +28,28 @@ async def async_setup_entry(
     """Set up entry."""
 
     entrystate: EntryState = hass.data[DOMAIN][config_entry.entry_id]
-    async_add_entities([Light(entrystate.coordinator, entrystate.device)])
+    async_add_entities(
+        [Light(entrystate.coordinator, entrystate.device, entrystate.device_info)]
+    )
 
 
 class Light(CoordinatorEntity[State], LightEntity):
     """Light device."""
 
     def __init__(
-        self, coordinator: DataUpdateCoordinator[State], device: Device
+        self,
+        coordinator: DataUpdateCoordinator[State],
+        device: Device,
+        device_info: DeviceInfo,
     ) -> None:
         """Init Tuya fan device."""
         super().__init__(coordinator)
         self._device = device
-        self._attr_name = "Fjäråskupan"
         self._attr_color_mode = COLOR_MODE_BRIGHTNESS
         self._attr_supported_color_modes = {COLOR_MODE_BRIGHTNESS}
         self._attr_unique_id = device.address
+        self._attr_device_info = device_info
+        self._attr_name = device_info["name"]
         self._update_from_device_data(coordinator.data)
 
     async def async_turn_on(self, **kwargs):
