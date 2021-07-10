@@ -12,6 +12,7 @@ from bleak.backends.scanner import AdvertisementData
 COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-{:01d}-"
 COMMAND_FORMAT_DIM = "-Dim{:03d}-"
 COMMAND_FORMAT_PERIODIC_VENTING = "Period{:02d}"
+COMMAND_FORMAT_AFTERCOOKINGSTRENGTHMANUAL = "Nachla-{:01d}"
 
 COMMAND_STOP_FAN = "Luft-Aus"
 COMMAND_LIGHT_ON_OFF = "Kochfeld"
@@ -19,7 +20,6 @@ COMMAND_RESETGREASEFILTER = "ResFett-"
 COMMAND_RESETCHARCOALFILTER = "ResKohle"
 COMMAND_AFTERCOOKINGTIMERMANUAL = "Nachlauf"
 COMMAND_AFTERCOOKINGTIMERAUTO = "NachlAut"
-COMMAND_AFTERCOOKINGSTRENGTHMANUAL = "Nachla-"
 COMMAND_AFTERCOOKINGTIMEROFF = "NachlAus"
 COMMAND_ACTIVATECARBONFILTER = "coal-ava"
 
@@ -40,8 +40,8 @@ class State:
     """Data received from characteristics."""
 
     light_on: bool = False
-    after_venting_fan_speed: int = 0
-    after_venting_on: bool = False
+    after_cooking_fan_speed: int = 0
+    after_cooking_on: bool = False
     carbon_filter_available: bool = False
     fan_speed: int = 0
     grease_filter_full: bool = False
@@ -57,7 +57,7 @@ class State:
             self,
             fan_speed=int(data[4]),
             light_on=data[5] == "L",
-            after_venting_on=data[6] == "N",
+            after_cooking_on=data[6] == "N",
             carbon_filter_available=data[7] == "C",
             grease_filter_full=data[8] == "F",
             carbon_filter_full=data[9] == "K",
@@ -72,9 +72,9 @@ class State:
         return replace(
             self,
             fan_speed=int(data[8]),
-            after_venting_fan_speed=int(data[9]),
+            after_cooking_fan_speed=int(data[9]),
             light_on=_bittest(data[10], 0),
-            after_venting_on=_bittest(data[10], 1),
+            after_cooking_on=_bittest(data[10], 1),
             periodic_venting_on=_bittest(data[10], 2),
             grease_filter_full=_bittest(data[11], 0),
             carbon_filter_full=_bittest(data[11], 1),
@@ -169,11 +169,22 @@ class Device:
             self.state = replace(self.state, light_on=not self.state.light_on)
         elif cmd == COMMAND_STOP_FAN:
             self.state = replace(self.state, fan_speed=0)
+        elif cmd == COMMAND_AFTERCOOKINGTIMERMANUAL:
+            self.state = replace(self.state, after_cooking_on=True)
+        elif cmd == COMMAND_AFTERCOOKINGTIMERAUTO:
+            self.state = replace(
+                self.state, after_cooking_on=True, after_cooking_fan_speed=0
+            )
 
     async def send_fan_speed(self, speed: int):
         """Set numbered fan speed."""
         await self.send_command(COMMAND_FORMAT_FAN_SPEED_FORMAT.format(speed))
         self.state = replace(self.state, fan_speed=speed)
+
+    async def send_after_cooking(self, speed: int):
+        """Set numbered fan speed."""
+        await self.send_command(COMMAND_FORMAT_AFTERCOOKINGSTRENGTHMANUAL.format(speed))
+        self.state = replace(self.state, after_cooking_fan_speed=speed)
 
     async def send_periodic_venting(self, period: int):
         """Set periodic venting."""
