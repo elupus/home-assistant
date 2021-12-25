@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from haphilipsjs.typing import (
+    MenuItemsSettingsUpdateValueData,
+    MenuItemsSettingsValueBool,
+)
+
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import PhilipsTVConfigEntry, PhilipsTVDataUpdateCoordinator
-from .entity import PhilipsJsEntity
+from .entity import PhilipsJsEntity, PhilipsTVSettingsEntity
 
 HUE_POWER_OFF = "Off"
 HUE_POWER_ON = "On"
@@ -23,7 +28,15 @@ async def async_setup_entry(
     """Set up the configuration entry."""
     coordinator = config_entry.runtime_data
 
-    async_add_entities([PhilipsTVScreenSwitch(coordinator)])
+    entities: list[SwitchEntity] = []
+    entities.append(PhilipsTVScreenSwitch(coordinator))
+    entities.extend(
+        PhilipsTVMenuSwitch(coordinator, data["node"], data["name"])
+        for data in coordinator.settings_nodes
+        if data["node"]["type"] == "TOGGLE_NODE"
+    )
+
+    async_add_entities(entities)
 
     if coordinator.api.json_feature_supported("ambilight", "Hue"):
         async_add_entities([PhilipsTVAmbilightHueSwitch(coordinator)])
@@ -105,3 +118,33 @@ class PhilipsTVAmbilightHueSwitch(PhilipsJsEntity, SwitchEntity):
         """Turn the entity off."""
         await self.coordinator.api.setHueLampPower(HUE_POWER_OFF)
         self.async_write_ha_state()
+
+
+class PhilipsTVMenuSwitch(PhilipsTVSettingsEntity, SwitchEntity):
+    """A Philips TV menu settings switch."""
+
+    _data: MenuItemsSettingsValueBool | None
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if entity is on."""
+        if not self._data:
+            return False
+
+        return self._data["value"]
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the entity on."""
+        await self._async_turn_on_off(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the entity off."""
+        await self._async_turn_on_off(False)
+
+    async def _async_turn_on_off(self, value: bool) -> None:
+        """Change the selected option."""
+        data: dict[int, MenuItemsSettingsUpdateValueData] = {
+            self._node["node_id"]: {"value": value}
+        }
+        await self.coordinator.api.postMenuItemsSettingsUpdateData(data)
+        await self.coordinator.async_request_refresh()

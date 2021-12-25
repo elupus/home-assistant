@@ -14,7 +14,8 @@
     "step": {
       "pair": {
         "data": {
-          "pin": "[%key:common::config_flow::data::pin%]"
+          "pin": "[%key:common::config_flow::data::pin%]",
+          "menu_nodes": "Selected configuration nodes"
         },
         "description": "Enter the PIN displayed on your TV",
         "title": "Pair"
@@ -29,6 +30,9 @@
         "description": "Do you want to add the TV ({name}) to Home Assistant? It will turn on and a pairing code will be displayed on it that you will need to enter in the next screen.",
         "title": "Discovered Philips TV"
       }
+    },
+    "abort": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
     }
   },
   "device_automation": {

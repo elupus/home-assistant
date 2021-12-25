@@ -5,25 +5,35 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 import logging
+from typing import TypedDict
 
-from haphilipsjs import (
-    AutenticationFailure,
-    ConnectionFailure,
-    GeneralFailure,
-    PhilipsTV,
+from haphilipsjs import AutenticationFailure, ConnectionFailure, PhilipsTV
+from haphilipsjs.typing import (
+    MenuItemsSettingsCurrentValueValue,
+    MenuItemsSettingsNode,
+    SystemType,
 )
-from haphilipsjs.typing import SystemType
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_ALLOW_NOTIFY, CONF_SYSTEM, DOMAIN
+from .const import CONF_ALLOW_NOTIFY, CONF_MENU_NODES, CONF_SYSTEM, DOMAIN
+from .helpers import get_node_strings
 
 _LOGGER = logging.getLogger(__name__)
+ATTR_NODE_ID = "node_id"
+ATTR_CONTROLLABLE = "controllable"
+
+
+class EntitySetupData(TypedDict):
+    """Description structure for setup."""
+
+    node: MenuItemsSettingsNode
+    name: str
+
 
 type PhilipsTVConfigEntry = ConfigEntry[PhilipsTVDataUpdateCoordinator]
 
@@ -42,6 +52,10 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
         """Set up the coordinator."""
         self.api = api
         self._notify_future: asyncio.Task | None = None
+        self.settings: dict[int, MenuItemsSettingsCurrentValueValue | None] = {}
+        self.settings_nodes: list[EntitySetupData] = config_entry.options.get(
+            CONF_MENU_NODES, []
+        )
 
         super().__init__(
             hass,
@@ -63,7 +77,7 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
             },
             manufacturer="Philips",
             model=self.system.get("model"),
-            name=self.system["name"],
+            name=self.system.get("name"),
             sw_version=self.system.get("softwareversion"),
         )
 
@@ -98,6 +112,7 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
         )
 
     async def _notify_task(self):
+        settings_version = self.api.settings_version
         while self._notify_wanted:
             try:
                 res = await self.api.notifyChange(130)
@@ -105,6 +120,9 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
                 res = None
 
             if res:
+                if settings_version != self.api.settings_version:
+                    settings_version = self.api.settings_version
+                    await self._async_update_settings()
                 self.async_set_updated_data(None)
             elif res is None:
                 _LOGGER.debug("Aborting notify due to unexpected return")
@@ -130,14 +148,34 @@ class PhilipsTVDataUpdateCoordinator(DataUpdateCoordinator[None]):
         super()._unschedule_refresh()
         self._async_notify_stop()
 
+    async def _async_update_settings(self):
+        node_ids = self.get_selected_node_ids()
+        if settings := await self.api.getMenuItemsSettingsCurrentValue(node_ids):
+            self.settings = settings
+        else:
+            self.settings = {}
+
+        await self.api.getStringsCached(
+            string_id
+            for description in self.settings_nodes
+            for string_id in get_node_strings(description["node"])
+        )
+
     async def _async_update_data(self):
         """Fetch the latest data from the source."""
         try:
-            await self.api.update()
+            if await self.api.update():
+                await self._async_update_settings()
             self._async_notify_schedule()
         except ConnectionFailure:
             pass
         except AutenticationFailure as exception:
-            raise ConfigEntryAuthFailed(str(exception)) from exception
-        except GeneralFailure as exception:
             raise UpdateFailed(str(exception)) from exception
+
+    def get_string(self, string_id: str) -> str:
+        """Get a cached translation."""
+        return self.api.strings.get(string_id, string_id)
+
+    def get_selected_node_ids(self) -> list[int]:
+        """Return current enabled nodes."""
+        return [description["node"]["node_id"] for description in self.settings_nodes]

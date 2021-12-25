@@ -13,6 +13,7 @@ from haphilipsjs import (
     PairingFailure,
     PhilipsTV,
 )
+from haphilipsjs.typing import MenuItemsSettingsCurrentValueValue, MenuItemsSettingsNode
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -36,9 +37,27 @@ from homeassistant.helpers.schema_config_entry_flow import (
     SchemaOptionsFlowHandler,
 )
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
+from homeassistant.data_entry_flow import AbortFlow, FlowResult
+from homeassistant.helpers.config_validation import multi_select
 
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from . import LOGGER
-from .const import CONF_ALLOW_NOTIFY, CONF_SYSTEM, CONST_APP_ID, CONST_APP_NAME, DOMAIN
+from .coordinator import PhilipsTVConfigEntry, EntitySetupData, PhilipsTVDataUpdateCoordinator
+from .const import (
+    CONF_ALLOW_NOTIFY,
+    CONF_MENU_NODES,
+    CONF_SYSTEM,
+    CONST_APP_ID,
+    CONST_APP_NAME,
+    DOMAIN,
+    MENU_NODE_TYPES,
+)
+from .helpers import SettingsNotAvailable, get_node_paths, get_path_names
 
 USER_SCHEMA = vol.Schema(
     {
@@ -240,6 +259,100 @@ class PhilipsJSConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(
         config_entry: ConfigEntry,
-    ) -> SchemaOptionsFlowHandler:
+    ) -> OptionsFlowHandler:
         """Get the options flow for this handler."""
-        return SchemaOptionsFlowHandler(config_entry, OPTIONS_FLOW)
+        return OptionsFlowHandler()
+
+
+async def get_usable_nodes(
+    api: PhilipsTV,
+    paths: list[tuple[MenuItemsSettingsNode, ...]],
+) -> list[tuple[MenuItemsSettingsNode, ...]]:
+    """Filter out PARENT_NODE nodes that does not have an activenode_id in it's current value."""
+    parent_node_ids = [
+        node["node_id"]
+        for node, *_ in paths
+        if node["type"] == "PARENT_NODE" and "nodes" in node.get("data", {})
+    ]
+
+    parent_node_current: dict[int, MenuItemsSettingsCurrentValueValue | None] = {}
+    if data := await api.getMenuItemsSettingsCurrentValue(parent_node_ids):
+        parent_node_current.update(data)
+
+    def _accepted(node: MenuItemsSettingsNode):
+        if node["type"] not in MENU_NODE_TYPES:
+            return False
+
+        if node["type"] == "PARENT_NODE":
+            if current := parent_node_current.get(node["node_id"]):
+                if current.get("data", {}).get("activenode_id"):
+                    return True
+            return False
+        return True
+
+    return [path for path in paths if _accepted(path[0])]
+
+
+async def _get_node_descriptions(api: PhilipsTV) -> dict[str, EntitySetupData]:
+    """Fetch entity description and data for a set of descriptors."""
+
+    paths = await get_usable_nodes(api, list(get_node_paths(api)))
+    names = await get_path_names(api, paths)
+
+    return {
+        str(node["node_id"]): EntitySetupData(node=node, name=name)
+        for (node, *_), name in zip(paths, names)
+    }
+
+
+class OptionsFlowHandler(OptionsFlow):
+    """Handle an option flow."""
+
+    config_entry: PhilipsTVConfigEntry
+
+    def __init__(self) -> None:
+        """Initialize options flow."""
+        self.menu_nodes: dict[str, EntitySetupData]
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle options flow."""
+
+        coordinator: PhilipsTVDataUpdateCoordinator = self.config_entry.runtime_data
+
+        if user_input is not None:
+            selected = [self.menu_nodes[key] for key in user_input[CONF_MENU_NODES]]
+
+            data = {
+                CONF_ALLOW_NOTIFY: user_input[CONF_ALLOW_NOTIFY],
+                CONF_MENU_NODES: selected,
+            }
+            return self.async_create_entry(title="", data=data)
+
+        try:
+            self.menu_nodes = await _get_node_descriptions(coordinator.api)
+        except (SettingsNotAvailable, ConnectionFailure) as exc:
+            raise AbortFlow("cannot_connect") from exc
+
+        options = self.config_entry.options
+
+        selector = multi_select(
+            {node_id: data["name"] for node_id, data in self.menu_nodes.items()}
+        )
+
+        selector_default = [
+            str(description["node"]["node_id"])
+            for description in options.get(CONF_MENU_NODES, [])
+        ]
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_ALLOW_NOTIFY,
+                    default=options.get(CONF_ALLOW_NOTIFY),
+                ): bool,
+                vol.Required(CONF_MENU_NODES, default=selector_default): selector,
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=data_schema)

@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, TypedDict
 
-from haphilipsjs import PhilipsTV
-from haphilipsjs.typing import SystemType
+from haphilipsjs import AutenticationFailure, ConnectionFailure, PhilipsTV
+from haphilipsjs.typing import (
+    MenuItemsSettingsCurrentValueValue,
+    MenuItemsSettingsNode,
+    MenuItemsSettingsValueData,
+    SystemType,
+)
 
 from homeassistant.const import (
     CONF_API_VERSION,
@@ -25,10 +31,11 @@ PLATFORMS = [
     Platform.MEDIA_PLAYER,
     Platform.REMOTE,
     Platform.SWITCH,
+    Platform.SELECT,
+    Platform.NUMBER,
 ]
 
 LOGGER = logging.getLogger(__name__)
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: PhilipsTVConfigEntry) -> bool:
     """Set up Philips TV from a config entry."""
@@ -43,7 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PhilipsTVConfigEntry) ->
     )
     coordinator = PhilipsTVDataUpdateCoordinator(hass, entry, tvapi)
 
-    await coordinator.async_refresh()
+    await coordinator.async_config_entry_first_refresh()
 
     if (actual_system := tvapi.system) and actual_system != system:
         data = {**entry.data, CONF_SYSTEM: actual_system}
