@@ -1,0 +1,123 @@
+# serializer version: 1
+# name: test_entities[select.philips_tv_style-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': list([
+      None,
+    ]),
+    'area_id': None,
+    'capabilities': dict({
+      <SelectEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'Vivid',
+        'Natural',
+      ]),
+    }),
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'select',
+    'entity_category': <EntityCategory.CONFIG: 'config'>,
+    'entity_id': 'select.philips_tv_style',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'object_id_base': 'Style',
+    'options': dict({
+    }),
+    'original_device_class': None,
+    'original_icon': None,
+    'original_name': 'Style',
+    'platform': 'philips_js',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': None,
+    'unique_id': '123456_menu_14',
+    'unit_of_measurement': None,
+  })
+# ---
+# name: test_entities[select.philips_tv_style-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      'controllable': True,
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Philips TV Style',
+      'node_id': 14,
+      <SelectEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'Vivid',
+        'Natural',
+      ]),
+    }),
+    'context': <ANY>,
+    'entity_id': 'select.philips_tv_style',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': 'Vivid',
+  })
+# ---
+# name: test_entities[select.philips_tv_time_zone_queensland-entry]
+  EntityRegistryEntrySnapshot({
+    'aliases': list([
+      None,
+    ]),
+    'area_id': None,
+    'capabilities': dict({
+      <SelectEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'Queensland',
+        'Victoria',
+      ]),
+    }),
+    'config_entry_id': <ANY>,
+    'config_subentry_id': <ANY>,
+    'device_class': None,
+    'device_id': <ANY>,
+    'disabled_by': None,
+    'domain': 'select',
+    'entity_category': <EntityCategory.CONFIG: 'config'>,
+    'entity_id': 'select.philips_tv_time_zone_queensland',
+    'has_entity_name': True,
+    'hidden_by': None,
+    'icon': None,
+    'id': <ANY>,
+    'labels': set({
+    }),
+    'name': None,
+    'object_id_base': 'Time zone (Queensland ...)',
+    'options': dict({
+    }),
+    'original_device_class': None,
+    'original_icon': None,
+    'original_name': 'Time zone (Queensland ...)',
+    'platform': 'philips_js',
+    'previous_unique_id': None,
+    'suggested_object_id': None,
+    'supported_features': 0,
+    'translation_key': None,
+    'unique_id': '123456_menu_6',
+    'unit_of_measurement': None,
+  })
+# ---
+# name: test_entities[select.philips_tv_time_zone_queensland-state]
+  StateSnapshot({
+    'attributes': ReadOnlyDict({
+      'controllable': True,
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Philips TV Time zone (Queensland ...)',
+      'node_id': 6,
+      <SelectEntityCapabilityAttribute.OPTIONS: 'options'>: list([
+        'Queensland',
+        'Victoria',
+      ]),
+    }),
+    'context': <ANY>,
+    'entity_id': 'select.philips_tv_time_zone_queensland',
+    'last_changed': <ANY>,
+    'last_reported': <ANY>,
+    'last_updated': <ANY>,
+    'state': 'Queensland',
+  })
+# ---
