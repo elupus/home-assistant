@@ -282,7 +282,7 @@ async def test_get_hvac_modes(hass, setup_comp_2):
     """Test that the operation list returns the correct modes."""
     state = hass.states.get(ENTITY)
     modes = state.attributes.get("hvac_modes")
-    assert modes == [HVAC_MODE_HEAT, HVAC_MODE_OFF]
+    assert modes == [HVAC_MODE_OFF, HVAC_MODE_HEAT]
 
 
 async def test_set_target_temp(hass, setup_comp_2):
@@ -813,7 +813,7 @@ async def test_mode_change_ac_trigger_on_not_long_enough(hass, setup_comp_4):
     _setup_sensor(hass, 30)
     await hass.async_block_till_done()
     assert len(calls) == 0
-    await common.async_set_hvac_mode(hass, HVAC_MODE_HEAT)
+    await common.async_set_hvac_mode(hass, HVAC_MODE_COOL)
     assert len(calls) == 1
     call = calls[0]
     assert call.domain == "homeassistant"
@@ -919,7 +919,7 @@ async def test_mode_change_ac_trigger_on_not_long_enough_2(hass, setup_comp_5):
     _setup_sensor(hass, 30)
     await hass.async_block_till_done()
     assert len(calls) == 0
-    await common.async_set_hvac_mode(hass, HVAC_MODE_HEAT)
+    await common.async_set_hvac_mode(hass, HVAC_MODE_COOL)
     assert len(calls) == 1
     call = calls[0]
     assert call.domain == "homeassistant"
