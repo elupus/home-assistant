@@ -94,6 +94,14 @@ def check_config(config: dict):
     """Check for valid configuration."""
     if CONF_HEATER not in config and CONF_COOLER not in config:
         raise vol.Invalid("Must specify either a heater or cooler")
+
+    if (ac_mode := config.get(CONF_AC_MODE)) is not None:
+        _LOGGER.warning(
+            "Use of `ac_mode` is deprecated, please use `cooler` parameter instead of `heater` to indicate use of a cooling switch"
+        )
+        if ac_mode:
+            config[CONF_COOLER] = config.pop(CONF_HEATER)
+
     return config
 
 
@@ -141,7 +149,6 @@ async def async_setup_platform(
     min_temp = config.get(CONF_MIN_TEMP)
     max_temp = config.get(CONF_MAX_TEMP)
     target_temp = config.get(CONF_TARGET_TEMP)
-    ac_mode = config.get(CONF_AC_MODE)
     min_cycle_duration = config.get(CONF_MIN_DUR)
     cold_tolerance = config.get(CONF_COLD_TOLERANCE)
     hot_tolerance = config.get(CONF_HOT_TOLERANCE)
@@ -153,10 +160,6 @@ async def async_setup_platform(
     precision = config.get(CONF_PRECISION)
     unit = hass.config.units.temperature_unit
     unique_id = config.get(CONF_UNIQUE_ID)
-
-    if ac_mode and cooler_entity_id is None:
-        cooler_entity_id = heater_entity_id
-        heater_entity_id = None
 
     async_add_entities(
         [
