@@ -8,6 +8,8 @@ from homeassistant.core import HomeAssistant, State
 
 from .conftest import create_rfx_test_cfg
 
+from . import ENTRY_VERSION
+
 from tests.common import MockConfigEntry, mock_restore_cache
 
 EVENT_SMOKE_DETECTOR_PANIC = "08200300a109000670"
@@ -25,7 +27,9 @@ EVENT_AC_118CDEA_2_ON = "0b1100100118cdea02010f70"
 async def test_one(hass: HomeAssistant, rfxtrx) -> None:
     """Test with 1 sensor."""
     entry_data = create_rfx_test_cfg(devices={"0b1100cd0213c7f230010f71": {}})
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx", unique_id=DOMAIN, data=entry_data, version=ENTRY_VERSION
+    )
 
     mock_entry.add_to_hass(hass)
 
@@ -49,7 +53,12 @@ async def test_one_pt2262(hass: HomeAssistant, rfxtrx) -> None:
             }
         }
     )
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx",
+        unique_id=DOMAIN,
+        data=entry_data,
+        version=ENTRY_VERSION,
+    )
 
     mock_entry.add_to_hass(hass)
 
@@ -76,7 +85,12 @@ async def test_pt2262_unconfigured(hass: HomeAssistant, rfxtrx) -> None:
     entry_data = create_rfx_test_cfg(
         devices={"0913000022670e013970": {}, "09130000226707013970": {}}
     )
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx",
+        unique_id=DOMAIN,
+        data=entry_data,
+        version=ENTRY_VERSION,
+    )
 
     mock_entry.add_to_hass(hass)
 
@@ -107,7 +121,12 @@ async def test_state_restore(hass: HomeAssistant, rfxtrx, state, event) -> None:
     mock_restore_cache(hass, [State(entity_id, state, attributes={ATTR_EVENT: event})])
 
     entry_data = create_rfx_test_cfg(devices={"0b1100cd0213c7f230010f71": {}})
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx",
+        unique_id=DOMAIN,
+        data=entry_data,
+        version=ENTRY_VERSION,
+    )
 
     mock_entry.add_to_hass(hass)
 
@@ -126,7 +145,12 @@ async def test_several(hass: HomeAssistant, rfxtrx) -> None:
             "0b1100100118cdea03010f70": {},
         }
     )
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx",
+        unique_id=DOMAIN,
+        data=entry_data,
+        version=ENTRY_VERSION,
+    )
 
     mock_entry.add_to_hass(hass)
 
@@ -188,7 +212,12 @@ async def test_off_delay_restore(hass: HomeAssistant, rfxtrx) -> None:
     )
 
     entry_data = create_rfx_test_cfg(devices={EVENT_AC_118CDEA_2_ON: {"off_delay": 5}})
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx",
+        unique_id=DOMAIN,
+        data=entry_data,
+        version=ENTRY_VERSION,
+    )
 
     mock_entry.add_to_hass(hass)
 
@@ -206,7 +235,12 @@ async def test_off_delay(hass: HomeAssistant, rfxtrx, timestep) -> None:
     entry_data = create_rfx_test_cfg(
         devices={"0b1100100118cdea02010f70": {"off_delay": 5}}
     )
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx",
+        unique_id=DOMAIN,
+        data=entry_data,
+        version=ENTRY_VERSION,
+    )
 
     mock_entry.add_to_hass(hass)
 
@@ -309,7 +343,9 @@ async def test_pt2262_duplicate_id(hass: HomeAssistant, rfxtrx) -> None:
             },
         }
     )
-    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
+    mock_entry = MockConfigEntry(
+        domain="rfxtrx", unique_id=DOMAIN, data=entry_data, version=ENTRY_VERSION
+    )
 
     mock_entry.add_to_hass(hass)
 
