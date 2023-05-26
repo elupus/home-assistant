@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
+from zhaquirks.xiaomi.aqara.tvoc import TVOCDisplayUnit
 from zigpy import types
 from zigpy.zcl.clusters.general import OnOff
 from zigpy.zcl.clusters.security import IasWd
@@ -455,6 +456,17 @@ class AqaraCurtainMode(ZCLEnumSelectEntity, id_suffix="window_covering_mode"):
     _select_attr = "window_covering_mode"
     _enum = AqaraE1ReverseDirection
     _attr_name = "Curtain mode"
+
+
+@CONFIG_DIAGNOSTIC_MATCH(
+    cluster_handler_names="aqara_cluster", models={"lumi.airmonitor.acn01"}
+)
+class AqaraDisplayMode(ZCLEnumSelectEntity, id_suffix="display_mode"):
+    """Representation of a ZHA curtain mode configuration entity."""
+
+    _select_attr = "display_mode"
+    _enum = TVOCDisplayUnit
+    _attr_name = "Display mode"
 
 
 class InovelliOutputMode(types.enum1):
