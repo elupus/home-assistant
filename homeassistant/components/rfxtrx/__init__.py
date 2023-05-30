@@ -15,7 +15,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_DEVICE_ID,
     CONF_DEVICE,
-    CONF_DEVICE_ID,
     CONF_DEVICES,
     CONF_HOST,
     CONF_PORT,
@@ -145,11 +144,11 @@ def _get_device_lookup(
     """Get a lookup structure for devices."""
     lookup = {}
     for event_code, event_config in devices.items():
-        if (event := get_rfx_object(event_code)) is None:
-            continue
-        device_id = get_device_id(
-            event.device, data_bits=event_config.get(CONF_DATA_BITS)
+        device_id = get_device_id_from_event(
+            event_code, event_config.get(CONF_DATA_BITS)
         )
+        if not device_id:
+            continue
         lookup[device_id] = event_config
     return lookup
 
@@ -215,8 +214,7 @@ async def async_setup_internal(hass: HomeAssistant, entry: ConfigEntry) -> None:
     @callback
     def _add_device(event: rfxtrxmod.RFXtrxEvent, device_id: DeviceTuple) -> None:
         """Add a device to config entry."""
-        config = {}
-        config[CONF_DEVICE_ID] = device_id
+        config: dict[str, Any] = {}
 
         _LOGGER.info(
             "Added device (Device ID: %s Class: %s Sub: %s, Event: %s)",
@@ -240,7 +238,8 @@ async def async_setup_internal(hass: HomeAssistant, entry: ConfigEntry) -> None:
             CONF_DEVICES: {
                 packet_id: entity_info
                 for packet_id, entity_info in entry.data[CONF_DEVICES].items()
-                if entity_info.get(CONF_DEVICE_ID) != device_id
+                if get_device_id_from_event(packet_id, entity_info.get(CONF_DATA_BITS))
+                != device_id
             },
         }
         hass.config_entries.async_update_entry(entry=entry, data=data)
@@ -253,7 +252,7 @@ async def async_setup_internal(hass: HomeAssistant, entry: ConfigEntry) -> None:
         device_entry = device_registry.deleted_devices[event.data["device_id"]]
         if entry.entry_id not in device_entry.config_entries:
             return
-        device_id = get_device_tuple_from_identifiers(device_entry.identifiers)
+        device_id = get_device_id_from_identifiers(device_entry.identifiers)
         if device_id:
             _remove_device(device_id)
 
@@ -343,7 +342,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Migrating from version %s", version)
 
-    data = {}
     if version == 1:
         # Convert from old tuple based device identifiers to standard string
 
@@ -351,34 +349,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for device_entry in dr.async_entries_for_config_entry(
             device_registry, entry.entry_id
         ):
-            identifiers = set()
+            identifiers = set(device_entry.identifiers)
             for identifier in device_entry.identifiers:
                 if identifier[0] == DOMAIN and len(identifier) == 4:
-                    identifier = (DOMAIN, "_".join(identifier[1:]))
-                identifiers.add(identifier)
+                    identifiers.add((DOMAIN, "_".join(identifier[1:])))
             device_registry.async_update_device(
                 device_entry.id, new_identifiers=identifiers
             )
-
-        def _get_device_id(event_code: str, options: dict[str, Any]) -> DeviceTuple:
-            if device_id_tuple := options.get(CONF_DEVICE_ID):
-                return cast(DeviceTuple, "_".join(device_id_tuple))
-            event = get_rfx_object(event_code)
-            assert event
-            return get_device_id(event.device, options.get(CONF_DATA_BITS))
-
-        devices = {
-            event_code: {**options, CONF_DEVICE_ID: _get_device_id(event_code, options)}
-            for event_code, options in entry.data[CONF_DEVICES].items()
-        }
-        data = {**entry.data, CONF_DEVICES: devices}
-        hass.config_entries.async_update_entry(
-            entry,
-            data=data,
-        )
-        version = entry.version = 2
-
-        hass.config_entries.async_update_entry(entry, data=data)
 
     _LOGGER.debug("Migration to version %s successful", version)
     return True
@@ -479,17 +456,27 @@ def get_device_id(
     return cast(DeviceTuple, f"{device.packettype:x}_{device.subtype:x}_{id_string}")
 
 
-def get_device_tuple_from_identifiers(
+def get_device_id_from_event(
+    event_code: str, data_bits: int | None = None
+) -> DeviceTuple | None:
+    """Calculate a device tuple from an event code."""
+    event = get_rfx_object(event_code)
+    if event is None:
+        return None
+    return get_device_id(event.device, data_bits)
+
+
+def get_device_id_from_identifiers(
     identifiers: set[tuple[str, str]]
 ) -> DeviceTuple | None:
     """Calculate the device tuple from a device entry."""
-    identifier = next((x for x in identifiers if x[0] == DOMAIN and len(x) == 4), None)
+    identifier = next((x for x in identifiers if x[0] == DOMAIN and len(x) == 2), None)
     if not identifier:
         return None
     return cast(DeviceTuple, identifier[1])
 
 
-def get_identifiers_from_device_tuple(
+def get_identifiers_from_device_id(
     device_id: DeviceTuple,
 ) -> set[tuple[str, str]]:
     """Calculate the device identifier from a device tuple."""
@@ -526,7 +513,7 @@ class RfxtrxEntity(RestoreEntity):
     ) -> None:
         """Initialize the device."""
         self._attr_device_info = DeviceInfo(
-            identifiers=get_identifiers_from_device_tuple(device_id),
+            identifiers=get_identifiers_from_device_id(device_id),
             model=device.type_string,
             name=f"{device.type_string} {device.id_string}",
         )

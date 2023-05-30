@@ -19,7 +19,6 @@ from homeassistant.const import (
     CONF_COMMAND_OFF,
     CONF_COMMAND_ON,
     CONF_DEVICE,
-    CONF_DEVICE_ID,
     CONF_DEVICES,
     CONF_HOST,
     CONF_PORT,
@@ -37,7 +36,8 @@ from . import (
     DOMAIN,
     DeviceTuple,
     get_device_id,
-    get_device_tuple_from_identifiers,
+    get_device_id_from_event,
+    get_device_id_from_identifiers,
     get_rfx_object,
 )
 from .binary_sensor import supported as binary_supported
@@ -149,7 +149,6 @@ class OptionsFlow(config_entries.OptionsFlow):
         configure_devices = {
             entry.id: entry.name_by_user if entry.name_by_user else entry.name
             for entry in device_entries
-            if self._get_device_event_code(entry.id) is not None
         }
 
         options = {
@@ -180,10 +179,6 @@ class OptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             devices: dict[str, dict[str, Any] | None] = {}
             device: dict[str, Any]
-            device_id = get_device_id(
-                self._selected_device_object.device,
-                data_bits=user_input.get(CONF_DATA_BITS),
-            )
 
             if CONF_REPLACE_DEVICE in user_input:
                 await self._async_replace_device(user_input[CONF_REPLACE_DEVICE])
@@ -212,9 +207,7 @@ class OptionsFlow(config_entries.OptionsFlow):
 
             if not errors:
                 devices = {}
-                device = {
-                    CONF_DEVICE_ID: list(device_id),
-                }
+                device = {}
 
                 devices[self._selected_device_event_code] = device
 
@@ -327,8 +320,8 @@ class OptionsFlow(config_entries.OptionsFlow):
         old_device_data = self._get_device_data(old_device)
         new_device_data = self._get_device_data(replace_device)
 
-        old_device_id = old_device_data[CONF_DEVICE_ID]
-        new_device_id = new_device_data[CONF_DEVICE_ID]
+        old_device_id = old_device_data["device_id"]
+        new_device_id = new_device_data["device_id"]
 
         entity_registry = er.async_get(self.hass)
         entity_entries = er.async_entries_for_device(
@@ -418,10 +411,9 @@ class OptionsFlow(config_entries.OptionsFlow):
         """Check if device does not already exist."""
         new_device_id = get_device_id(new_rfx_obj.device)
         for packet_id, entity_info in self._config_entry.data[CONF_DEVICES].items():
-            rfx_obj = get_rfx_object(packet_id)
-            assert rfx_obj
-
-            device_id = get_device_id(rfx_obj.device, entity_info.get(CONF_DATA_BITS))
+            device_id = get_device_id_from_event(
+                packet_id, entity_info.get(CONF_DATA_BITS)
+            )
             if new_device_id == device_id:
                 return False
 
@@ -448,23 +440,19 @@ class OptionsFlow(config_entries.OptionsFlow):
 
         return False
 
-    def _get_device_event_code(self, entry_id: str) -> str | None:
-        data = self._get_device_data(entry_id)
-
-        return data["event_code"]
-
     def _get_device_data(self, entry_id: str) -> DeviceData:
         """Get event code based on device identifier."""
-        event_code: str | None = None
         entry = self._device_registry.async_get(entry_id)
         assert entry
-        device_id = get_device_tuple_from_identifiers(entry.identifiers)
+        device_id = get_device_id_from_identifiers(entry.identifiers)
         assert device_id
         for packet_id, entity_info in self._config_entry.data[CONF_DEVICES].items():
-            if entity_info.get(CONF_DEVICE_ID) == device_id:
-                event_code = cast(str, packet_id)
-                break
-        return DeviceData(event_code=event_code, device_id=device_id)
+            if (
+                get_device_id_from_event(packet_id, entity_info.get(CONF_DATA_BITS))
+                == device_id
+            ):
+                return DeviceData(event_code=packet_id, device_id=device_id)
+        raise ValueError("Entry could not be convert to device data")
 
     @callback
     def update_config_data(

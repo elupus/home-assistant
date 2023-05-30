@@ -14,7 +14,6 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.setup import async_setup_component
 
 from .conftest import create_rfx_test_cfg
-from . import ENTRY_VERSION
 
 from tests.common import (
     MockConfigEntry,
@@ -49,9 +48,7 @@ EVENT_FIREALARM_1 = EventTestData(
 async def setup_entry(hass, devices):
     """Construct a config setup."""
     entry_data = create_rfx_test_cfg(devices=devices)
-    mock_entry = MockConfigEntry(
-        domain="rfxtrx", unique_id=DOMAIN, data=entry_data, version=ENTRY_VERSION
-    )
+    mock_entry = MockConfigEntry(domain="rfxtrx", unique_id=DOMAIN, data=entry_data)
 
     mock_entry.add_to_hass(hass)
 

@@ -8,7 +8,6 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
 
 from .conftest import create_rfx_test_cfg
-from . import ENTRY_VERSION
 
 from tests.common import MockConfigEntry, mock_restore_cache
 
@@ -20,7 +19,6 @@ async def test_one_cover(hass: HomeAssistant, rfxtrx) -> None:
         domain="rfxtrx",
         unique_id=DOMAIN,
         data=entry_data,
-        version=ENTRY_VERSION,
     )
 
     mock_entry.add_to_hass(hass)
@@ -72,7 +70,6 @@ async def test_state_restore(hass: HomeAssistant, rfxtrx, state) -> None:
         domain="rfxtrx",
         unique_id=DOMAIN,
         data=entry_data,
-        version=ENTRY_VERSION,
     )
 
     mock_entry.add_to_hass(hass)
@@ -96,7 +93,6 @@ async def test_several_covers(hass: HomeAssistant, rfxtrx) -> None:
         domain="rfxtrx",
         unique_id=DOMAIN,
         data=entry_data,
-        version=ENTRY_VERSION,
     )
 
     mock_entry.add_to_hass(hass)
@@ -147,7 +143,6 @@ async def test_duplicate_cover(hass: HomeAssistant, rfxtrx) -> None:
         domain="rfxtrx",
         unique_id=DOMAIN,
         data=entry_data,
-        version=ENTRY_VERSION,
     )
 
     mock_entry.add_to_hass(hass)
@@ -179,7 +174,6 @@ async def test_rfy_cover(hass: HomeAssistant, rfxtrx) -> None:
         domain="rfxtrx",
         unique_id=DOMAIN,
         data=entry_data,
-        version=ENTRY_VERSION,
     )
 
     mock_entry.add_to_hass(hass)

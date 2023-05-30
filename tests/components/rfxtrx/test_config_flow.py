@@ -10,8 +10,6 @@ from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from . import ENTRY_VERSION
-
 from tests.common import MockConfigEntry
 
 SOME_PROTOCOLS = ["ac", "arc"]
@@ -305,7 +303,6 @@ async def test_options_global(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     with patch("homeassistant.components.rfxtrx.async_setup_entry", return_value=True):
         result = await start_options_flow(hass, entry)
@@ -341,7 +338,6 @@ async def test_no_protocols(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     with patch("homeassistant.components.rfxtrx.async_setup_entry", return_value=True):
         result = await start_options_flow(hass, entry)
@@ -376,7 +372,6 @@ async def test_options_add_device(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     result = await start_options_flow(hass, entry)
 
@@ -416,7 +411,7 @@ async def test_options_add_device(hass: HomeAssistant) -> None:
 
     assert entry.data["automatic_add"]
 
-    assert entry.data["devices"]["0b1100cd0213c7f230010f71"]
+    assert entry.data["devices"].get("0b1100cd0213c7f230010f71") is not None
     assert "delay_off" not in entry.data["devices"]["0b1100cd0213c7f230010f71"]
 
     state = hass.states.get("binary_sensor.ac_213c7f2_48")
@@ -439,7 +434,6 @@ async def test_options_add_duplicate_device(hass: HomeAssistant) -> None:
             "devices": {"0b1100cd0213c7f230010f71": {}},
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     entry.add_to_hass(hass)
 
@@ -473,12 +467,11 @@ async def test_options_replace_sensor_device(hass: HomeAssistant) -> None:
             "device": "/dev/tty123",
             "automatic_add": False,
             "devices": {
-                "0a520101f00400e22d0189": {"device_id": "52_1_f0:04"},
-                "0a520105230400c3260279": {"device_id": "52_1_23:04"},
+                "0a520101f00400e22d0189": {},
+                "0a520105230400c3260279": {},
             },
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     await start_options_flow(hass, entry)
 
@@ -631,16 +624,11 @@ async def test_options_replace_control_device(hass: HomeAssistant) -> None:
             "device": "/dev/tty123",
             "automatic_add": False,
             "devices": {
-                "0b1100100118cdea02010f70": {
-                    "device_id": "11_0_118cdea:2",
-                },
-                "0b1100101118cdea02010f70": {
-                    "device_id": "11_0_1118cdea:2",
-                },
+                "0b1100100118cdea02010f70": {},
+                "0b1100101118cdea02010f70": {},
             },
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     await start_options_flow(hass, entry)
 
@@ -737,7 +725,6 @@ async def test_options_add_and_configure_device(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     result = await start_options_flow(hass, entry)
 
@@ -847,7 +834,6 @@ async def test_options_configure_rfy_cover_device(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
-        version=ENTRY_VERSION,
     )
     result = await start_options_flow(hass, entry)
 
@@ -877,9 +863,6 @@ async def test_options_configure_rfy_cover_device(hass: HomeAssistant) -> None:
     assert (
         entry.data["devices"]["0C1a0000010203010000000000"]["venetian_blind_mode"]
         == "EU"
-    )
-    assert isinstance(
-        entry.data["devices"]["0C1a0000010203010000000000"]["device_id"], str
     )
 
     device_registry = dr.async_get(hass)
@@ -917,9 +900,6 @@ async def test_options_configure_rfy_cover_device(hass: HomeAssistant) -> None:
     assert (
         entry.data["devices"]["0C1a0000010203010000000000"]["venetian_blind_mode"]
         == "EU"
-    )
-    assert isinstance(
-        entry.data["devices"]["0C1a0000010203010000000000"]["device_id"], str
     )
 
 
