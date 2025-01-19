@@ -13,6 +13,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
+from . import ENTRY_VERSION
+
 from tests.common import MockConfigEntry
 
 SOME_PROTOCOLS = ["ac", "arc"]
@@ -275,6 +277,7 @@ async def test_options_global(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     with patch("homeassistant.components.rfxtrx.async_setup_entry", return_value=True):
         result = await start_options_flow(hass, entry)
@@ -310,6 +313,7 @@ async def test_no_protocols(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     with patch("homeassistant.components.rfxtrx.async_setup_entry", return_value=True):
         result = await start_options_flow(hass, entry)
@@ -344,6 +348,7 @@ async def test_options_add_device(hass: HomeAssistant) -> None:
             "devices": {},
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     result = await start_options_flow(hass, entry)
 
@@ -406,6 +411,7 @@ async def test_options_add_duplicate_device(hass: HomeAssistant) -> None:
             "devices": {"0b1100cd0213c7f230010f71": {}},
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     entry.add_to_hass(hass)
 
@@ -448,6 +454,7 @@ async def test_options_replace_sensor_device(
             },
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     await start_options_flow(hass, entry)
 
@@ -498,7 +505,7 @@ async def test_options_replace_sensor_device(
         (
             elem.id
             for elem in device_entries
-            if next(iter(elem.identifiers))[1:] == ("52", "1", "f0:04")
+            if next(iter(elem.identifiers))[1] == "52_1_f0:04"
         ),
         None,
     )
@@ -506,7 +513,7 @@ async def test_options_replace_sensor_device(
         (
             elem.id
             for elem in device_entries
-            if next(iter(elem.identifiers))[1:] == ("52", "1", "23:04")
+            if next(iter(elem.identifiers))[1] == "52_1_23:04"
         ),
         None,
     )
@@ -610,6 +617,7 @@ async def test_options_replace_control_device(
             },
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     await start_options_flow(hass, entry)
 
@@ -632,7 +640,7 @@ async def test_options_replace_control_device(
         (
             elem.id
             for elem in device_entries
-            if next(iter(elem.identifiers))[1:] == ("11", "0", "118cdea:2")
+            if next(iter(elem.identifiers))[1] == "11_0_118cdea:2"
         ),
         None,
     )
@@ -640,7 +648,7 @@ async def test_options_replace_control_device(
         (
             elem.id
             for elem in device_entries
-            if next(iter(elem.identifiers))[1:] == ("11", "0", "1118cdea:2")
+            if next(iter(elem.identifiers))[1] == "11_0_1118cdea:2"
         ),
         None,
     )
@@ -705,6 +713,7 @@ async def test_options_add_and_configure_device(
             "devices": {},
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     result = await start_options_flow(hass, entry)
 
@@ -813,6 +822,7 @@ async def test_options_configure_rfy_cover_device(
             "devices": {},
         },
         unique_id=DOMAIN,
+        version=ENTRY_VERSION,
     )
     result = await start_options_flow(hass, entry)
 
