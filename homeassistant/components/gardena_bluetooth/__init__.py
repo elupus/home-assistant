@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
 import logging
 
 from bleak.backends.device import BLEDevice
 from gardena_bluetooth.client import CachedConnection, Client
 from gardena_bluetooth.const import DeviceConfiguration, DeviceInformation
 from gardena_bluetooth.exceptions import CommunicationFailure
+from gardena_bluetooth.parse import ManufacturerData, ProductType, Service
 
 from homeassistant.components import bluetooth
 from homeassistant.const import CONF_ADDRESS, Platform
@@ -51,12 +54,61 @@ def get_connection(hass: HomeAssistant, address: str) -> CachedConnection:
     return CachedConnection(DISCONNECT_DELAY, _device_lookup)
 
 
+async def _async_service_info(
+    hass, address
+) -> AsyncIterator[bluetooth.BluetoothServiceInfoBleak]:
+    queue = asyncio.Queue[bluetooth.BluetoothServiceInfoBleak]()
+
+    def _callback(
+        service_info: bluetooth.BluetoothServiceInfoBleak,
+        change: bluetooth.BluetoothChange,
+    ) -> None:
+        if change != bluetooth.BluetoothChange.ADVERTISEMENT:
+            return
+
+        queue.put_nowait(service_info)
+
+    service_info = bluetooth.async_last_service_info(hass, address, True)
+    if service_info:
+        yield service_info
+
+    cancel = bluetooth.async_register_callback(
+        hass,
+        _callback,
+        {bluetooth.match.ADDRESS: address},
+        bluetooth.BluetoothScanningMode.ACTIVE,
+    )
+    try:
+        while True:
+            yield await queue.get()
+    finally:
+        cancel()
+
+
+async def _async_get_product_type(hass, address: str) -> ProductType:
+    data = ManufacturerData()
+
+    async for service_info in _async_service_info(hass, address):
+        data.update(service_info.manufacturer_data.get(ManufacturerData.company, b""))
+        product_type = ProductType.from_manufacturer_data(data)
+        if product_type is not ProductType.UNKNOWN:
+            return product_type
+    raise AssertionError("Iterator should have been infinite")
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: GardenaBluetoothConfigEntry
 ) -> bool:
     """Set up Gardena Bluetooth from a config entry."""
 
     address = entry.data[CONF_ADDRESS]
+
+    try:
+        async with asyncio.timeout(TIMEOUT):
+            product_type = await _async_get_product_type(hass, address)
+    except TimeoutError as exception:
+        raise ConfigEntryNotReady("Unable to find product type") from exception
+
     client = Client(get_connection(hass, address))
     try:
         sw_version = await client.read_char(DeviceInformation.firmware_version, None)
@@ -66,7 +118,7 @@ async def async_setup_entry(
             DeviceConfiguration.custom_device_name, entry.title
         )
         uuids = await client.get_all_characteristics_uuid()
-        await client.update_timestamp(dt_util.now())
+        await client.update_timestamp(DeviceConfiguration.unix_timestamp, dt_util.now())
     except (TimeoutError, CommunicationFailure, DeviceUnavailable) as exception:
         await client.disconnect()
         raise ConfigEntryNotReady(
@@ -82,8 +134,17 @@ async def async_setup_entry(
         model=model,
     )
 
+    # Find parsers for this device
+    services = Service.services_for_product_type(product_type)
+    unique_ids = {
+        char.unique_id
+        for service in services
+        for char in service.characteristics.values()
+        if char.uuid in uuids
+    }
+
     coordinator = GardenaBluetoothCoordinator(
-        hass, entry, LOGGER, client, uuids, device, address
+        hass, entry, LOGGER, client, unique_ids, device, address
     )
 
     entry.runtime_data = coordinator

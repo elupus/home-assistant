@@ -681,7 +681,7 @@ class EntityRegistryStore(storage.Store[dict[str, list[dict[str, Any]]]]):
                 # Version 1.19 adds undefined flags to deleted entities, this is a bugfix
                 # of version 1.18
                 set_to_undefined = old_minor_version < 18
-                for entity in data["deleted_entities"]:
+                for entity in data.get("deleted_entities", []):
                     entity["disabled_by_undefined"] = set_to_undefined
                     entity["hidden_by_undefined"] = set_to_undefined
                     entity["options_undefined"] = set_to_undefined
@@ -1767,7 +1767,7 @@ class EntityRegistry(BaseRegistry):
                 except ValueError:
                     return None
 
-            for entity in data["deleted_entities"]:
+            for entity in data.get("deleted_entities", []):
                 try:
                     domain = split_entity_id(entity["entity_id"])[0]
                     _validate_item(
