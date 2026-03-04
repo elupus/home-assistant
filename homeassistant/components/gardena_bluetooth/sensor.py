@@ -5,7 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from gardena_bluetooth.const import Battery, Sensor, Valve
+from gardena_bluetooth.const import (
+    AquaContourBattery,
+    Battery,
+    FlowStatistics,
+    Sensor,
+    Spray,
+    Valve,
+)
 from gardena_bluetooth.parse import Characteristic
 
 from homeassistant.components.sensor import (
@@ -14,7 +21,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfLength, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -57,6 +64,14 @@ DESCRIPTIONS = (
         char=Battery.battery_level,
     ),
     GardenaBluetoothSensorEntityDescription(
+        key=AquaContourBattery.battery_level.unique_id,
+        state_class=SensorStateClass.MEASUREMENT,
+        device_class=SensorDeviceClass.BATTERY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement=PERCENTAGE,
+        char=AquaContourBattery.battery_level,
+    ),
+    GardenaBluetoothSensorEntityDescription(
         key=Sensor.battery_level.unique_id,
         translation_key="sensor_battery_level",
         state_class=SensorStateClass.MEASUREMENT,
@@ -88,6 +103,36 @@ DESCRIPTIONS = (
         entity_category=EntityCategory.DIAGNOSTIC,
         char=Sensor.measurement_timestamp,
         connected_state=Sensor.connected_state,
+    ),
+    GardenaBluetoothSensorEntityDescription(
+        key=FlowStatistics.overall.unique_id,
+        translation_key="flow_statistics_overall",
+        device_class=SensorDeviceClass.VOLUME,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        char=FlowStatistics.overall,
+    ),
+    GardenaBluetoothSensorEntityDescription(
+        key=FlowStatistics.current.unique_id,
+        translation_key="flow_statistics_current",
+        device_class=SensorDeviceClass.VOLUME,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        char=FlowStatistics.current,
+    ),
+    GardenaBluetoothSensorEntityDescription(
+        key=Spray.current_distance.unique_id,
+        translation_key="spray_current_distance",
+        device_class=SensorDeviceClass.DISTANCE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        char=Spray.current_distance,
+    ),
+    GardenaBluetoothSensorEntityDescription(
+        key=Spray.current_sector.unique_id,
+        translation_key="spray_current_sector",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        char=Spray.current_sector,
     ),
 )
 

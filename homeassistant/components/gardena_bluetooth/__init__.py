@@ -8,7 +8,7 @@ import logging
 
 from bleak.backends.device import BLEDevice
 from gardena_bluetooth.client import CachedConnection, Client
-from gardena_bluetooth.const import DeviceConfiguration, DeviceInformation
+from gardena_bluetooth.const import AquaContour, DeviceConfiguration, DeviceInformation
 from gardena_bluetooth.exceptions import CommunicationFailure
 from gardena_bluetooth.parse import ManufacturerData, ProductType, Service
 
@@ -114,11 +114,24 @@ async def async_setup_entry(
         sw_version = await client.read_char(DeviceInformation.firmware_version, None)
         manufacturer = await client.read_char(DeviceInformation.manufacturer_name, None)
         model = await client.read_char(DeviceInformation.model_number, None)
-        name = await client.read_char(
-            DeviceConfiguration.custom_device_name, entry.title
-        )
         uuids = await client.get_all_characteristics_uuid()
-        await client.update_timestamp(DeviceConfiguration.unix_timestamp, dt_util.now())
+
+        if DeviceConfiguration.custom_device_name.unique_id in uuids:
+            name = await client.read_char(
+                DeviceConfiguration.custom_device_name, entry.title
+            )
+        elif AquaContour.custom_device_name.unique_id in uuids:
+            name = await client.read_char(AquaContour.custom_device_name, entry.title)
+        else:
+            name = entry.title
+
+        if DeviceConfiguration.unix_timestamp.unique_id in uuids:
+            await client.update_timestamp(
+                DeviceConfiguration.unix_timestamp, dt_util.now()
+            )
+        elif AquaContour.unix_timestamp.unique_id in uuids:
+            await client.update_timestamp(AquaContour.unix_timestamp, dt_util.now())
+
     except (TimeoutError, CommunicationFailure, DeviceUnavailable) as exception:
         await client.disconnect()
         raise ConfigEntryNotReady(

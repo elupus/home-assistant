@@ -58,6 +58,12 @@
       "activation_reason": {
         "name": "Activation reason"
       },
+      "flow_statistics_current": {
+        "name": "Current flow"
+      },
+      "flow_statistics_overall": {
+        "name": "Overall flow"
+      },
       "remaining_open_timestamp": {
         "name": "Valve closing"
       },
@@ -69,6 +75,12 @@
       },
       "sensor_type": {
         "name": "Sensor type"
+      },
+      "spray_current_distance": {
+        "name": "Current distance"
+      },
+      "spray_current_sector": {
+        "name": "Current sector"
       }
     },
     "switch": {
