@@ -109,6 +109,9 @@ async def async_setup_entry(
     except TimeoutError as exception:
         raise ConfigEntryNotReady("Unable to find product type") from exception
 
+    # Find parsers for this device
+    services = Service.services_for_product_type(product_type)
+
     client = Client(get_connection(hass, address))
     try:
         sw_version = await client.read_char(DeviceInformation.firmware_version, None)
@@ -116,20 +119,27 @@ async def async_setup_entry(
         model = await client.read_char(DeviceInformation.model_number, None)
         uuids = await client.get_all_characteristics_uuid()
 
-        if DeviceConfiguration.custom_device_name.unique_id in uuids:
+        unique_ids = {
+            char.unique_id
+            for service in services
+            for char in service.characteristics.values()
+            if char.uuid in uuids
+        }
+
+        if DeviceConfiguration.custom_device_name.unique_id in unique_ids:
             name = await client.read_char(
                 DeviceConfiguration.custom_device_name, entry.title
             )
-        elif AquaContour.custom_device_name.unique_id in uuids:
+        elif AquaContour.custom_device_name.unique_id in unique_ids:
             name = await client.read_char(AquaContour.custom_device_name, entry.title)
         else:
             name = entry.title
 
-        if DeviceConfiguration.unix_timestamp.unique_id in uuids:
+        if DeviceConfiguration.unix_timestamp.unique_id in unique_ids:
             await client.update_timestamp(
                 DeviceConfiguration.unix_timestamp, dt_util.now()
             )
-        elif AquaContour.unix_timestamp.unique_id in uuids:
+        elif AquaContour.unix_timestamp.unique_id in unique_ids:
             await client.update_timestamp(AquaContour.unix_timestamp, dt_util.now())
 
     except (TimeoutError, CommunicationFailure, DeviceUnavailable) as exception:
@@ -146,15 +156,6 @@ async def async_setup_entry(
         manufacturer=manufacturer,
         model=model,
     )
-
-    # Find parsers for this device
-    services = Service.services_for_product_type(product_type)
-    unique_ids = {
-        char.unique_id
-        for service in services
-        for char in service.characteristics.values()
-        if char.uuid in uuids
-    }
 
     coordinator = GardenaBluetoothCoordinator(
         hass, entry, LOGGER, client, unique_ids, device, address
