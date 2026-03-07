@@ -139,8 +139,8 @@ async def async_setup_entry(
             await client.update_timestamp(
                 DeviceConfiguration.unix_timestamp, dt_util.now()
             )
-        elif AquaContour.unix_timestamp.unique_id in unique_ids:
-            await client.update_timestamp(AquaContour.unix_timestamp, dt_util.now())
+        # elif AquaContour.unix_timestamp.unique_id in unique_ids:
+        #    await client.update_timestamp(AquaContour.unix_timestamp, dt_util.now())
 
     except (TimeoutError, CommunicationFailure, DeviceUnavailable) as exception:
         await client.disconnect()
