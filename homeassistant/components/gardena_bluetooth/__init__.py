@@ -1,10 +1,12 @@
 """The Gardena Bluetooth integration."""
 
+from asyncio import TaskGroup
 import logging
 
 from bleak.backends.device import BLEDevice
 from gardena_bluetooth.client import CachedConnection, Client
 from gardena_bluetooth.const import ProductType
+from gardena_bluetooth.parse import ManufacturerData
 from gardena_bluetooth.scan import async_get_manufacturer_data
 
 from homeassistant.components import bluetooth
@@ -46,6 +48,21 @@ def get_connection(hass: HomeAssistant, address: str) -> CachedConnection:
     return CachedConnection(DISCONNECT_DELAY, _device_lookup)
 
 
+async def async_get_manufacturer_data_active(
+    hass: HomeAssistant, addresses: set[str]
+) -> dict[str, ManufacturerData]:
+    """Wrapper around library function to ensure we get active scans."""
+    result = {address: ManufacturerData() for address in addresses}
+    try:
+        async with TaskGroup() as tg:
+            task = tg.create_task(async_get_manufacturer_data(addresses))
+            tg.create_task(bluetooth.async_request_active_scan(hass))
+            result.update(await task)
+    except* TimeoutError:
+        pass
+    return result
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: GardenaBluetoothConfigEntry
 ) -> bool:
@@ -54,7 +71,7 @@ async def async_setup_entry(
     address = entry.data[CONF_ADDRESS]
 
     try:
-        mfg_data = await async_get_manufacturer_data({address})
+        mfg_data = await async_get_manufacturer_data_active(hass, {address})
     except TimeoutError as exc:
         raise ConfigEntryNotReady("Unable to find product type") from exc
 
