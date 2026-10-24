@@ -229,6 +229,12 @@ class CastStatusListener(
             self._cast_device.multizone_membership_changed(group_uuid, None)
 
     @override
+    def multizone_sessions_changed(self):
+        """Handle a change of the devices playing a session."""
+        if self._valid:
+            self._cast_device.schedule_update_ha_state()
+
+    @override
     def multizone_new_cast_status(self, group_uuid, cast_status):
         """Handle reception of a new CastStatus for a group."""
 

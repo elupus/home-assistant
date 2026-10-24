@@ -574,9 +574,7 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
         """Handle this device being added to or removed from a group."""
         self.mz_media_status[group_uuid] = media_status
         self.mz_media_status_received[group_uuid] = dt_util.utcnow()
-        # The group members of the other devices in the group change too
-        for device in self._config_entry.runtime_data.devices.values():
-            device.schedule_update_ha_state()
+        self.schedule_update_ha_state()
 
     # ========== Service Calls ==========
     def _media_controller(self):
@@ -1125,28 +1123,13 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
         """
         if self._cast_info.is_audio_group or self.mz_mgr is None:
             return None
-        runtime_data = self._config_entry.runtime_data
-        for group_uuid in self.mz_mgr.get_multizone_memberships(self._cast_info.uuid):
-            if (
-                group_host := runtime_data.dynamic_groups.get(UUID(group_uuid))
-            ) is None:
-                continue
-            members = self.mz_mgr.get_multizone_members(UUID(group_uuid))
-            # A dynamic group the session has left can remain with one member
-            if len(members) < 2:
-                continue
-            devices = [
-                runtime_data.devices[UUID(member)]
-                for member in members
-                if UUID(member) in runtime_data.devices
-            ]
-            # The host keeps hosting the group if it's removed from it, then
-            # there's no leader among the members
-            devices.sort(
-                key=lambda device: device._cast_info.cast_info.host != group_host  # noqa: SLF001
-            )
-            return [device.entity_id for device in devices]
-        return [self.entity_id]
+        devices = self._config_entry.runtime_data.devices
+        members = [
+            devices[uuid].entity_id
+            for uuid in self.mz_mgr.get_session_devices(self._cast_info.uuid)
+            if uuid in devices
+        ]
+        return members or [self.entity_id]
 
     @property
     @override
@@ -1273,15 +1256,6 @@ class DynamicCastGroup(CastDevice):
     def async_setup(self):
         """Create chromecast object."""
         self._async_setup("Dynamic group")
-        self._config_entry.runtime_data.dynamic_groups[self._cast_info.uuid] = (
-            self._cast_info.cast_info.host
-        )
-
-    @override
-    async def _async_tear_down(self) -> None:
-        """Disconnect and forget the group."""
-        self._config_entry.runtime_data.dynamic_groups.pop(self._cast_info.uuid, None)
-        await super()._async_tear_down()
 
     @override
     @callback

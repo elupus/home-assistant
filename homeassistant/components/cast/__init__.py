@@ -44,8 +44,6 @@ class CastRuntimeData:
     browser: CastBrowser | None = None
     multizone_manager: MultizoneManager | None = None
     devices: dict[UUID, CastMediaPlayerEntity] = field(default_factory=dict)
-    # The host of each dynamic group, which is the host of its leader
-    dynamic_groups: dict[UUID, str] = field(default_factory=dict)
 
 
 @callback

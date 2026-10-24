@@ -2798,32 +2798,25 @@ async def test_join_players_failed(hass: HomeAssistant, mz_mock) -> None:
         )
 
 
-async def test_group_members(
-    hass: HomeAssistant, mz_mock, get_multizone_status_mock
-) -> None:
-    """Test the devices in a dynamic group are reported as group members."""
+async def test_group_members(hass: HomeAssistant, mz_mock) -> None:
+    """Test the devices playing the same session are reported as group members."""
     info_1 = get_fake_chromecast_info(host="192.168.178.42")
     info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
-    group = get_fake_chromecast_info(
-        host="192.168.178.42", port=32203, uuid=FakeGroupUUID
-    )
-    get_multizone_status_mock.return_value.dynamic_groups = [
-        MagicMock(uuid=FakeGroupUUID)
-    ]
-    mz_mock.get_multizone_memberships.return_value = []
-    mz_mock.get_multizone_mediacontroller.return_value.status = None
-    await async_setup_media_player_casts(hass, [info_1, info_2, group])
+    mz_mock.get_session_devices.return_value = []
+    await async_setup_media_player_casts(hass, [info_1, info_2])
 
     def group_members(entity_id: str) -> list[str]:
         return hass.states.get(entity_id).attributes[media_player.ATTR_GROUP_MEMBERS]
 
+    def sessions_changed() -> None:
+        for call in mz_mock.register_listener.call_args_list:
+            call.args[1].multizone_sessions_changed()
+
     assert group_members("media_player.speaker") == ["media_player.speaker"]
 
-    # Speaker 2 joins the dynamic group hosted by speaker, the leader is first
-    mz_mock.get_multizone_memberships.return_value = [str(FakeGroupUUID)]
-    mz_mock.get_multizone_members.return_value = [str(FakeUUID2), str(FakeUUID)]
-    mz_listener = mz_mock.register_listener.call_args_list[1][0][1]
-    mz_listener.added_to_multizone(str(FakeGroupUUID))
+    # Speaker 2 joins the session of speaker, which leads it
+    mz_mock.get_session_devices.return_value = [FakeUUID, FakeUUID2]
+    sessions_changed()
     await hass.async_block_till_done()
 
     for entity_id in ("media_player.speaker", "media_player.speaker_2"):
@@ -2831,10 +2824,11 @@ async def test_group_members(
             "media_player.speaker",
             "media_player.speaker_2",
         ]
+    mz_mock.get_session_devices.assert_any_call(FakeUUID2)
 
-    # The session left the group, which remains with one member
-    mz_mock.get_multizone_members.return_value = [str(FakeUUID)]
-    mz_listener.removed_from_multizone(str(FakeGroupUUID))
+    # Devices which aren't set up are left out
+    mz_mock.get_session_devices.return_value = [FakeGroupUUID, FakeUUID]
+    sessions_changed()
     await hass.async_block_till_done()
 
     assert group_members("media_player.speaker") == ["media_player.speaker"]
