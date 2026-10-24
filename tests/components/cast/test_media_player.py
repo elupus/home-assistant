@@ -11,6 +11,7 @@ from uuid import UUID
 import attr
 import pychromecast
 from pychromecast.const import CAST_TYPE_CHROMECAST, CAST_TYPE_GROUP
+from pychromecast.controllers import multizone
 import pytest
 from pytest_homeassistant.common import (
     MockConfigEntry,
@@ -980,6 +981,7 @@ async def test_entity_cast_status(
     assert state.attributes.get("supported_features") == (
         MediaPlayerEntityFeature.PLAY_MEDIA
         | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.GROUPING
         | MediaPlayerEntityFeature.TURN_ON
         | MediaPlayerEntityFeature.VOLUME_MUTE
         | MediaPlayerEntityFeature.VOLUME_SET
@@ -1023,6 +1025,7 @@ async def test_entity_cast_status(
     assert state.attributes.get("supported_features") == (
         MediaPlayerEntityFeature.PLAY_MEDIA
         | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.GROUPING
         | MediaPlayerEntityFeature.TURN_ON
     )
 
@@ -1037,11 +1040,13 @@ async def test_entity_cast_status(
             | MediaPlayerEntityFeature.PLAY_MEDIA
             | MediaPlayerEntityFeature.STOP
             | MediaPlayerEntityFeature.TURN_OFF
+            | MediaPlayerEntityFeature.GROUPING
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.VOLUME_MUTE
             | MediaPlayerEntityFeature.VOLUME_SET,
             MediaPlayerEntityFeature.PLAY_MEDIA
             | MediaPlayerEntityFeature.TURN_OFF
+            | MediaPlayerEntityFeature.GROUPING
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.VOLUME_MUTE
             | MediaPlayerEntityFeature.VOLUME_SET,
@@ -1053,11 +1058,13 @@ async def test_entity_cast_status(
             | MediaPlayerEntityFeature.PLAY_MEDIA
             | MediaPlayerEntityFeature.STOP
             | MediaPlayerEntityFeature.TURN_OFF
+            | MediaPlayerEntityFeature.GROUPING
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.VOLUME_MUTE
             | MediaPlayerEntityFeature.VOLUME_SET,
             MediaPlayerEntityFeature.PLAY_MEDIA
             | MediaPlayerEntityFeature.TURN_OFF
+            | MediaPlayerEntityFeature.GROUPING
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.VOLUME_MUTE
             | MediaPlayerEntityFeature.VOLUME_SET,
@@ -1069,11 +1076,13 @@ async def test_entity_cast_status(
             | MediaPlayerEntityFeature.PLAY_MEDIA
             | MediaPlayerEntityFeature.STOP
             | MediaPlayerEntityFeature.TURN_OFF
+            | MediaPlayerEntityFeature.GROUPING
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.VOLUME_MUTE
             | MediaPlayerEntityFeature.VOLUME_SET,
             MediaPlayerEntityFeature.PLAY_MEDIA
             | MediaPlayerEntityFeature.TURN_OFF
+            | MediaPlayerEntityFeature.GROUPING
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.VOLUME_MUTE
             | MediaPlayerEntityFeature.VOLUME_SET,
@@ -1588,6 +1597,7 @@ async def test_entity_control(
         | MediaPlayerEntityFeature.PLAY_MEDIA
         | MediaPlayerEntityFeature.STOP
         | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.GROUPING
         | MediaPlayerEntityFeature.TURN_ON
         | MediaPlayerEntityFeature.VOLUME_MUTE
         | MediaPlayerEntityFeature.VOLUME_SET
@@ -1654,6 +1664,7 @@ async def test_entity_control(
         | MediaPlayerEntityFeature.PLAY_MEDIA
         | MediaPlayerEntityFeature.STOP
         | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.GROUPING
         | MediaPlayerEntityFeature.TURN_ON
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
         | MediaPlayerEntityFeature.NEXT_TRACK
@@ -1793,6 +1804,7 @@ async def test_entity_media_states_lovelace_app(
     assert state.attributes.get("supported_features") == (
         MediaPlayerEntityFeature.PLAY_MEDIA
         | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.GROUPING
         | MediaPlayerEntityFeature.TURN_ON
         | MediaPlayerEntityFeature.VOLUME_MUTE
         | MediaPlayerEntityFeature.VOLUME_SET
@@ -2603,3 +2615,340 @@ async def test_entity_media_states_active_app_reported_idle(
 
     state = hass.states.get(entity_id)
     assert state.state == "off"
+
+
+async def async_setup_media_player_casts(
+    hass: HomeAssistant, infos: list[ChromecastInfo]
+) -> tuple[list[MagicMock], Callable[[ChromecastInfo], None]]:
+    """Set up connected cast entities for several devices in one config entry.
+
+    Returns the devices' chromecasts and a function to announce a cast.
+    """
+    browser = MagicMock(devices={}, zc={})
+    chromecasts = {info.uuid: get_fake_chromecast(info) for info in infos}
+
+    with (
+        patch(
+            "homeassistant.components.cast.discovery.pychromecast.get_chromecast_from_cast_info",
+            side_effect=lambda cast_info, _zconf: chromecasts[cast_info.uuid],
+        ),
+        patch(
+            "homeassistant.components.cast.discovery.pychromecast.discovery.CastBrowser",
+            return_value=browser,
+        ) as cast_browser,
+        patch(
+            "homeassistant.components.cast.discovery.ChromeCastZeroconf.get_zeroconf",
+            return_value=get_fake_zconf(),
+        ),
+    ):
+        data = {
+            "ignore_cec": [],
+            "known_hosts": [],
+            "uuid": [str(info.uuid) for info in infos],
+        }
+        entry = MockConfigEntry(data=data, domain=DOMAIN)
+        entry.add_to_hass(hass)
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+
+        discovery_callback = cast_browser.call_args[0][0].add_cast
+
+        def announce(info: ChromecastInfo) -> None:
+            browser.devices[info.uuid] = info.cast_info
+            discovery_callback(info.uuid, FAKE_MDNS_SERVICE.name)
+
+        for info in infos:
+            announce(info)
+        await hass.async_block_till_done(wait_background_tasks=True)
+
+    devices = [chromecasts[info.uuid] for info in infos if not info.is_audio_group]
+    for chromecast in devices:
+        _, conn_status_cb, _ = get_status_callbacks(chromecast)
+        await async_send_connection_status(
+            hass, conn_status_cb, MagicMock(status="CONNECTED")
+        )
+    return devices, announce
+
+
+def get_session_listener(mz_mock: MagicMock, chromecast: MagicMock) -> Any:
+    """Return the listener of session updates registered for a device."""
+    casts = [call.args[0] for call in mz_mock.add_device.call_args_list]
+    controller = mz_mock.add_device.return_value
+    listeners = [call.args[0] for call in controller.register_listener.call_args_list]
+    return listeners[casts.index(chromecast)]
+
+
+def session_updated(
+    mz_mock: MagicMock, chromecast: MagicMock, device_id: UUID, port: int
+) -> None:
+    """Report that the session on a device moved to an endpoint."""
+    get_session_listener(mz_mock, chromecast).multizone_playback_session_updated(
+        multizone.PlaybackSessionUpdate(
+            "Speaker + 1",
+            [],
+            [],
+            multizone.SessionEndpoint(
+                str(device_id), "192.168.178.42", port, "session"
+            ),
+        )
+    )
+
+
+async def test_join_players(hass: HomeAssistant, mz_mock) -> None:
+    """Test devices are added to the session playing on a device."""
+    info_1 = get_fake_chromecast_info(host="192.168.178.42")
+    info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
+    (chromecast_1, chromecast_2), _ = await async_setup_media_player_casts(
+        hass, [info_1, info_2]
+    )
+
+    assert (
+        hass.states.get("media_player.speaker").attributes["supported_features"]
+        & MediaPlayerEntityFeature.GROUPING
+    )
+
+    await hass.services.async_call(
+        MP_DOMAIN,
+        media_player.SERVICE_JOIN,
+        {
+            ATTR_ENTITY_ID: "media_player.speaker",
+            media_player.ATTR_GROUP_MEMBERS: ["media_player.speaker_2"],
+        },
+        blocking=True,
+    )
+
+    # The devices are managed, so they can be found as members of a session
+    assert [call.args[0] for call in mz_mock.add_device.call_args_list] == [
+        chromecast_1,
+        chromecast_2,
+    ]
+    mz_mock.update_session_devices.assert_called_once_with(
+        FakeUUID, add={FakeUUID2}, remove=set()
+    )
+
+
+async def test_unjoin_player(hass: HomeAssistant, mz_mock) -> None:
+    """Test a device is removed from the session it plays."""
+    info_1 = get_fake_chromecast_info(host="192.168.178.42")
+    info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
+    await async_setup_media_player_casts(hass, [info_1, info_2])
+
+    await hass.services.async_call(
+        MP_DOMAIN,
+        media_player.SERVICE_UNJOIN,
+        {ATTR_ENTITY_ID: "media_player.speaker_2"},
+        blocking=True,
+    )
+
+    mz_mock.update_session_devices.assert_called_once_with(
+        FakeUUID2, add=set(), remove={FakeUUID2}
+    )
+
+
+async def test_device_removed_from_manager_when_disconnected(
+    hass: HomeAssistant, mz_mock
+) -> None:
+    """Test a device is no longer managed when it's disconnected."""
+    (chromecast,), _ = await async_setup_media_player_casts(
+        hass, [get_fake_chromecast_info()]
+    )
+    mz_mock.add_device.assert_called_once_with(chromecast)
+
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+
+    mz_mock.remove_device.assert_called_once_with(FakeUUID)
+
+
+async def test_join_players_not_cast_device(hass: HomeAssistant, mz_mock) -> None:
+    """Test joining an entity which isn't a cast device fails."""
+    await async_setup_media_player_casts(hass, [get_fake_chromecast_info()])
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            MP_DOMAIN,
+            media_player.SERVICE_JOIN,
+            {
+                ATTR_ENTITY_ID: "media_player.speaker",
+                media_player.ATTR_GROUP_MEMBERS: ["media_player.other"],
+            },
+            blocking=True,
+        )
+    mz_mock.update_session_devices.assert_not_called()
+
+
+async def test_join_players_failed(hass: HomeAssistant, mz_mock) -> None:
+    """Test a failed change is reported."""
+    info_1 = get_fake_chromecast_info(host="192.168.178.42")
+    info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
+    await async_setup_media_player_casts(hass, [info_1, info_2])
+    mz_mock.update_session_devices.side_effect = pychromecast.error.RequestFailed(
+        "set playback devices"
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            MP_DOMAIN,
+            media_player.SERVICE_JOIN,
+            {
+                ATTR_ENTITY_ID: "media_player.speaker",
+                media_player.ATTR_GROUP_MEMBERS: ["media_player.speaker_2"],
+            },
+            blocking=True,
+        )
+
+
+async def test_group_members(
+    hass: HomeAssistant, mz_mock, get_multizone_status_mock
+) -> None:
+    """Test the devices in a dynamic group are reported as group members."""
+    info_1 = get_fake_chromecast_info(host="192.168.178.42")
+    info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
+    group = get_fake_chromecast_info(
+        host="192.168.178.42", port=32203, uuid=FakeGroupUUID
+    )
+    get_multizone_status_mock.return_value.dynamic_groups = [
+        MagicMock(uuid=FakeGroupUUID)
+    ]
+    mz_mock.get_multizone_memberships.return_value = []
+    mz_mock.get_multizone_mediacontroller.return_value.status = None
+    await async_setup_media_player_casts(hass, [info_1, info_2, group])
+
+    def group_members(entity_id: str) -> list[str]:
+        return hass.states.get(entity_id).attributes[media_player.ATTR_GROUP_MEMBERS]
+
+    assert group_members("media_player.speaker") == ["media_player.speaker"]
+
+    # Speaker 2 joins the dynamic group hosted by speaker, the leader is first
+    mz_mock.get_multizone_memberships.return_value = [str(FakeGroupUUID)]
+    mz_mock.get_multizone_members.return_value = [str(FakeUUID2), str(FakeUUID)]
+    mz_listener = mz_mock.register_listener.call_args_list[1][0][1]
+    mz_listener.added_to_multizone(str(FakeGroupUUID))
+    await hass.async_block_till_done()
+
+    for entity_id in ("media_player.speaker", "media_player.speaker_2"):
+        assert group_members(entity_id) == [
+            "media_player.speaker",
+            "media_player.speaker_2",
+        ]
+
+    # The session left the group, which remains with one member
+    mz_mock.get_multizone_members.return_value = [str(FakeUUID)]
+    mz_listener.removed_from_multizone(str(FakeGroupUUID))
+    await hass.async_block_till_done()
+
+    assert group_members("media_player.speaker") == ["media_player.speaker"]
+
+
+async def test_connect_to_dynamic_group_from_session_update(
+    hass: HomeAssistant, mz_mock, get_chromecast_mock
+) -> None:
+    """Test a dynamic group the session moved to is connected without mDNS."""
+    info_1 = get_fake_chromecast_info(host="192.168.178.42")
+    info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
+    (chromecast_1, _), _ = await async_setup_media_player_casts(hass, [info_1, info_2])
+
+    get_chromecast_mock.reset_mock()
+    session_updated(mz_mock, chromecast_1, FakeGroupUUID, 32203)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    get_chromecast_mock.assert_called_once()
+    cast_info = get_chromecast_mock.call_args.args[0]
+    assert (cast_info.uuid, cast_info.host, cast_info.port) == (
+        FakeGroupUUID,
+        "192.168.178.42",
+        32203,
+    )
+    mz_mock.add_multizone.assert_called_with(get_chromecast_mock.return_value)
+
+    # Known groups and devices aren't connected again
+    session_updated(mz_mock, chromecast_1, FakeGroupUUID, 32203)
+    session_updated(mz_mock, chromecast_1, FakeUUID2, 8009)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    get_chromecast_mock.assert_called_once()
+
+
+async def _async_session_moved_to_group(
+    hass: HomeAssistant, mz_mock: MagicMock, chromecast: MagicMock
+) -> None:
+    """Report that the session on a device moved to the dynamic group."""
+    session_updated(mz_mock, chromecast, FakeGroupUUID, 32203)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+@pytest.mark.parametrize("status", ["LOST", "FAILED"])
+async def test_unannounced_dynamic_group_removed_when_gone(
+    hass: HomeAssistant, mz_mock, get_chromecast_mock, status: str
+) -> None:
+    """Test a group learned about from a session update is removed when gone."""
+    info_1 = get_fake_chromecast_info(host="192.168.178.42")
+    (chromecast_1,), _ = await async_setup_media_player_casts(hass, [info_1])
+    get_chromecast_mock.reset_mock()
+    get_chromecast_mock.return_value.uuid = FakeGroupUUID
+    await _async_session_moved_to_group(hass, mz_mock, chromecast_1)
+    group_chromecast = get_chromecast_mock.return_value
+    connection_listener = group_chromecast.register_connection_listener.call_args[0][0]
+
+    connection_listener.new_connection_status(MagicMock(status=status))
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    group_chromecast.disconnect.assert_called_once()
+    mz_mock.remove_multizone.assert_called_once_with(FakeGroupUUID)
+
+    # It's connected again if the session moves to it again
+    await _async_session_moved_to_group(hass, mz_mock, chromecast_1)
+    assert get_chromecast_mock.call_count == 2
+
+
+async def test_announced_dynamic_group_kept_when_connection_lost(
+    hass: HomeAssistant, mz_mock, get_chromecast_mock, get_multizone_status_mock
+) -> None:
+    """Test a group announced over mDNS is kept when its connection is lost."""
+    info_1 = get_fake_chromecast_info(host="192.168.178.42")
+    group = get_fake_chromecast_info(
+        host="192.168.178.42", port=32203, uuid=FakeGroupUUID
+    )
+    get_multizone_status_mock.return_value.dynamic_groups = [
+        MagicMock(uuid=FakeGroupUUID)
+    ]
+    (chromecast_1,), announce = await async_setup_media_player_casts(hass, [info_1])
+    get_chromecast_mock.reset_mock()
+    get_chromecast_mock.return_value.uuid = FakeGroupUUID
+    await _async_session_moved_to_group(hass, mz_mock, chromecast_1)
+    group_chromecast = get_chromecast_mock.return_value
+    connection_listener = group_chromecast.register_connection_listener.call_args[0][0]
+
+    # The group is announced after the session update
+    announce(group)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    connection_listener.new_connection_status(MagicMock(status="LOST"))
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    group_chromecast.disconnect.assert_not_called()
+    mz_mock.remove_multizone.assert_not_called()
+    get_chromecast_mock.assert_called_once()
+
+
+async def test_group_media_status_polled_when_added_to_group(
+    hass: HomeAssistant, mz_mock
+) -> None:
+    """Test the group's current media status is used when added to a group."""
+    entity_id = "media_player.speaker"
+    info = get_fake_chromecast_info()
+    chromecast, _ = await async_setup_media_player_cast(hass, info)
+    _, conn_status_cb, _, _ = get_status_callbacks(chromecast, mz_mock)
+    await async_send_connection_status(
+        hass, conn_status_cb, MagicMock(status="CONNECTED")
+    )
+    assert hass.states.get(entity_id).state == "off"
+
+    # The group is playing, its status doesn't change when the device is added
+    mz_mock.get_multizone_mediacontroller.return_value = MagicMock(
+        status=MagicMock(images=None, player_state="PLAYING")
+    )
+    mz_listener = mz_mock.register_listener.call_args[0][1]
+    mz_listener.added_to_multizone(str(FakeGroupUUID))
+    await hass.async_block_till_done()
+
+    mz_mock.get_multizone_mediacontroller.assert_called_with(str(FakeGroupUUID))
+    assert hass.states.get(entity_id).state == "playing"
