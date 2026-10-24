@@ -169,8 +169,6 @@ class CastStatusListener(
         self._valid = True
         self._mz_mgr = mz_mgr
 
-        if cast_device._cast_info.is_audio_group:  # noqa: SLF001
-            self._mz_mgr.add_multizone(chromecast)
         if mz_only:
             chromecast.register_connection_listener(self)
             return
@@ -249,9 +247,7 @@ class CastStatusListener(
 
         All following callbacks won't be forwarded.
         """
-        if self._cast_device._cast_info.is_audio_group:  # noqa: SLF001
-            self._mz_mgr.remove_multizone(self._uuid)
-        else:
+        if not self._cast_device._cast_info.is_audio_group:  # noqa: SLF001
             self._mz_mgr.deregister_listener(self._uuid, self)
         self._valid = False
 

@@ -19,7 +19,11 @@ from pychromecast.controllers.media import (
     MEDIA_PLAYER_STATE_PLAYING,
     MEDIA_PLAYER_STATE_UNKNOWN,
 )
-from pychromecast.controllers.multizone import MultizoneManager, PlaybackSessionUpdate
+from pychromecast.controllers.multizone import (
+    MultizoneController,
+    MultizoneManager,
+    PlaybackSessionUpdate,
+)
 from pychromecast.controllers.receiver import VOLUME_CONTROL_TYPE_FIXED
 from pychromecast.error import PyChromecastError
 from pychromecast.models import CastInfo, HostServiceInfo
@@ -198,6 +202,7 @@ class CastDevice:
         self._cast_info = cast_info
         self._chromecast: pychromecast.Chromecast | None = None
         self.mz_mgr: MultizoneManager | None = None
+        self._mz_controller: MultizoneController | None = None
         self._status_listener: CastStatusListener | None = None
         self._add_remove_handler: Callable[[], None] | None = None
         self._del_remove_handler: Callable[[], None] | None = None
@@ -262,6 +267,7 @@ class CastDevice:
         if runtime_data.multizone_manager is None:
             runtime_data.multizone_manager = MultizoneManager()
         self.mz_mgr = runtime_data.multizone_manager
+        self._mz_controller = self.mz_mgr.add_multizone(chromecast)
 
         self._status_listener = CastStatusListener(
             self, chromecast, self.mz_mgr, self._mz_only
@@ -282,8 +288,11 @@ class CastDevice:
 
     def _invalidate(self) -> None:
         """Invalidate some attributes."""
+        if self.mz_mgr is not None:
+            self.mz_mgr.remove_multizone(self._cast_info.uuid)
         self._chromecast = None
         self.mz_mgr = None
+        self._mz_controller = None
         if self._status_listener is not None:
             self._status_listener.invalidate()
             self._status_listener = None
@@ -380,11 +389,9 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
         """Set up the chromecast object."""
         await super()._async_connect_to_chromecast()
 
-        if not self._cast_info.is_audio_group and self.mz_mgr is not None:
-            # The device can own the playback session of a dynamic group
-            self.mz_mgr.add_device(self._chromecast).register_listener(
-                PlaybackSessionListener(self)
-            )
+        # The device or group can own the playback session of a dynamic group
+        assert self._mz_controller is not None
+        self._mz_controller.register_listener(PlaybackSessionListener(self))
 
         self._attr_available = False
         self.cast_status = self._chromecast.status
@@ -409,8 +416,6 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
     @override
     def _invalidate(self):
         """Invalidate some attributes."""
-        if self.mz_mgr is not None:
-            self.mz_mgr.remove_device(self._cast_info.uuid)
         super()._invalidate()
 
         self.cast_status = None

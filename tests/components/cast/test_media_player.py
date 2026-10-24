@@ -2672,8 +2672,8 @@ async def async_setup_media_player_casts(
 
 def get_session_listener(mz_mock: MagicMock, chromecast: MagicMock) -> Any:
     """Return the listener of session updates registered for a device."""
-    casts = [call.args[0] for call in mz_mock.add_device.call_args_list]
-    controller = mz_mock.add_device.return_value
+    casts = [call.args[0] for call in mz_mock.add_multizone.call_args_list]
+    controller = mz_mock.add_multizone.return_value
     listeners = [call.args[0] for call in controller.register_listener.call_args_list]
     return listeners[casts.index(chromecast)]
 
@@ -2718,7 +2718,7 @@ async def test_join_players(hass: HomeAssistant, mz_mock) -> None:
     )
 
     # The devices are managed, so they can be found as members of a session
-    assert [call.args[0] for call in mz_mock.add_device.call_args_list] == [
+    assert [call.args[0] for call in mz_mock.add_multizone.call_args_list] == [
         chromecast_1,
         chromecast_2,
     ]
@@ -2752,12 +2752,12 @@ async def test_device_removed_from_manager_when_disconnected(
     (chromecast,), _ = await async_setup_media_player_casts(
         hass, [get_fake_chromecast_info()]
     )
-    mz_mock.add_device.assert_called_once_with(chromecast)
+    mz_mock.add_multizone.assert_called_once_with(chromecast)
 
     hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
     await hass.async_block_till_done()
 
-    mz_mock.remove_device.assert_called_once_with(FakeUUID)
+    mz_mock.remove_multizone.assert_called_once_with(FakeUUID)
 
 
 async def test_join_players_not_cast_device(hass: HomeAssistant, mz_mock) -> None:
