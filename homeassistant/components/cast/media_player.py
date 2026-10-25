@@ -1128,10 +1128,13 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
         """
         if self._cast_info.is_audio_group or self.mz_mgr is None:
             return None
+        endpoint = self.mz_mgr.get_session_endpoint(self._cast_info.uuid)
+        if endpoint is None:
+            return [self.entity_id]
         devices = self._config_entry.runtime_data.devices
         members = [
             devices[uuid].entity_id
-            for uuid in self.mz_mgr.get_session_devices(self._cast_info.uuid)
+            for uuid in map(UUID, self.mz_mgr.get_multizone_members(endpoint))
             if uuid in devices
         ]
         return members or [self.entity_id]

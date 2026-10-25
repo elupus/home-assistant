@@ -2802,7 +2802,7 @@ async def test_group_members(hass: HomeAssistant, mz_mock) -> None:
     """Test the devices playing the same session are reported as group members."""
     info_1 = get_fake_chromecast_info(host="192.168.178.42")
     info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
-    mz_mock.get_session_devices.return_value = []
+    mz_mock.get_session_endpoint.return_value = None
     await async_setup_media_player_casts(hass, [info_1, info_2])
 
     def group_members(entity_id: str) -> list[str]:
@@ -2815,7 +2815,8 @@ async def test_group_members(hass: HomeAssistant, mz_mock) -> None:
     assert group_members("media_player.speaker") == ["media_player.speaker"]
 
     # Speaker 2 joins the session of speaker, which leads it
-    mz_mock.get_session_devices.return_value = [FakeUUID, FakeUUID2]
+    mz_mock.get_session_endpoint.return_value = FakeGroupUUID
+    mz_mock.get_multizone_members.return_value = [str(FakeUUID), str(FakeUUID2)]
     sessions_changed()
     await hass.async_block_till_done()
 
@@ -2824,10 +2825,11 @@ async def test_group_members(hass: HomeAssistant, mz_mock) -> None:
             "media_player.speaker",
             "media_player.speaker_2",
         ]
-    mz_mock.get_session_devices.assert_any_call(FakeUUID2)
+    mz_mock.get_session_endpoint.assert_any_call(FakeUUID2)
+    mz_mock.get_multizone_members.assert_called_with(FakeGroupUUID)
 
     # Devices which aren't set up are left out
-    mz_mock.get_session_devices.return_value = [FakeGroupUUID, FakeUUID]
+    mz_mock.get_multizone_members.return_value = [str(FakeGroupUUID), str(FakeUUID)]
     sessions_changed()
     await hass.async_block_till_done()
 
