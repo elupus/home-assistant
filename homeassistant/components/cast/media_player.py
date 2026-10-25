@@ -624,6 +624,10 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
             raise HomeAssistantError("Chromecast is not available.")
         if (endpoint := mz_mgr.get_session_endpoint(self._cast_info.uuid)) is None:
             raise HomeAssistantError("Chromecast is not playing anything.")
+        members = set(mz_mgr.get_multizone_members(endpoint))
+        if not add and members <= {str(uuid) for uuid in remove}:
+            # The device plays alone, there's no session to remove it from
+            return
         mz_mgr.update_session_devices(endpoint, add=add, remove=remove)
 
     @override

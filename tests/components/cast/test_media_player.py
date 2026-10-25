@@ -2733,6 +2733,7 @@ async def test_unjoin_player(hass: HomeAssistant, mz_mock) -> None:
     info_1 = get_fake_chromecast_info(host="192.168.178.42")
     info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
     await async_setup_media_player_casts(hass, [info_1, info_2])
+    mz_mock.get_multizone_members.return_value = [str(FakeUUID), str(FakeUUID2)]
 
     await hass.services.async_call(
         MP_DOMAIN,
@@ -2745,6 +2746,22 @@ async def test_unjoin_player(hass: HomeAssistant, mz_mock) -> None:
     mz_mock.update_session_devices.assert_called_once_with(
         mz_mock.get_session_endpoint.return_value, add=set(), remove={FakeUUID2}
     )
+
+
+async def test_unjoin_player_playing_alone(hass: HomeAssistant, mz_mock) -> None:
+    """Test unjoining a device which plays alone does nothing."""
+    await async_setup_media_player_casts(hass, [get_fake_chromecast_info()])
+    mz_mock.get_session_endpoint.return_value = FakeUUID
+    mz_mock.get_multizone_members.return_value = [str(FakeUUID)]
+
+    await hass.services.async_call(
+        MP_DOMAIN,
+        media_player.SERVICE_UNJOIN,
+        {ATTR_ENTITY_ID: "media_player.speaker"},
+        blocking=True,
+    )
+
+    mz_mock.update_session_devices.assert_not_called()
 
 
 async def test_unjoin_player_not_playing(hass: HomeAssistant, mz_mock) -> None:
