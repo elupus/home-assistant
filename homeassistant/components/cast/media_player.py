@@ -546,7 +546,8 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
 
         The group is announced over mDNS too, but that can take a while.
         """
-        if (endpoint := update.session_endpoint) is None:
+        endpoint = update.session_endpoint
+        if endpoint is None:
             return
         uuid = UUID(endpoint.device_id)
         if uuid in self._config_entry.runtime_data.devices:
@@ -620,9 +621,11 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
     @api_error
     def _update_session_devices(self, add: set[UUID], remove: set[UUID]) -> None:
         """Change the devices playing the session this device plays."""
-        if (mz_mgr := self.mz_mgr) is None:
+        mz_mgr = self.mz_mgr
+        if mz_mgr is None:
             raise HomeAssistantError("Chromecast is not available.")
-        if (endpoint := mz_mgr.get_session_endpoint(self._cast_info.uuid)) is None:
+        endpoint = mz_mgr.get_session_endpoint(self._cast_info.uuid)
+        if endpoint is None:
             raise HomeAssistantError("Chromecast is not playing anything.")
         members = set(mz_mgr.get_multizone_members(endpoint))
         if not add and members <= {str(uuid) for uuid in remove}:
@@ -637,7 +640,8 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
             device.entity_id: device
             for device in self._config_entry.runtime_data.devices.values()
         }
-        if unknown := [member for member in group_members if member not in devices]:
+        unknown = [member for member in group_members if member not in devices]
+        if unknown:
             raise HomeAssistantError(f"Can't join {unknown}, not cast devices")
         add = {devices[member]._cast_info.uuid for member in group_members}  # noqa: SLF001
         await self.hass.async_add_executor_job(self._update_session_devices, add, set())
