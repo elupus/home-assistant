@@ -2722,8 +2722,9 @@ async def test_join_players(hass: HomeAssistant, mz_mock) -> None:
         chromecast_1,
         chromecast_2,
     ]
+    mz_mock.get_session_endpoint.assert_called_with(FakeUUID)
     mz_mock.update_session_devices.assert_called_once_with(
-        FakeUUID, add={FakeUUID2}, remove=set()
+        mz_mock.get_session_endpoint.return_value, add={FakeUUID2}, remove=set()
     )
 
 
@@ -2740,9 +2741,25 @@ async def test_unjoin_player(hass: HomeAssistant, mz_mock) -> None:
         blocking=True,
     )
 
+    mz_mock.get_session_endpoint.assert_called_with(FakeUUID2)
     mz_mock.update_session_devices.assert_called_once_with(
-        FakeUUID2, add=set(), remove={FakeUUID2}
+        mz_mock.get_session_endpoint.return_value, add=set(), remove={FakeUUID2}
     )
+
+
+async def test_unjoin_player_not_playing(hass: HomeAssistant, mz_mock) -> None:
+    """Test unjoining a device which plays no session fails."""
+    await async_setup_media_player_casts(hass, [get_fake_chromecast_info()])
+    mz_mock.get_session_endpoint.return_value = None
+
+    with pytest.raises(HomeAssistantError, match="not playing anything"):
+        await hass.services.async_call(
+            MP_DOMAIN,
+            media_player.SERVICE_UNJOIN,
+            {ATTR_ENTITY_ID: "media_player.speaker"},
+            blocking=True,
+        )
+    mz_mock.update_session_devices.assert_not_called()
 
 
 async def test_device_removed_from_manager_when_disconnected(

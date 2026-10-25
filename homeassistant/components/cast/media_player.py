@@ -622,7 +622,9 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
         """Change the devices playing the session this device plays."""
         if (mz_mgr := self.mz_mgr) is None:
             raise HomeAssistantError("Chromecast is not available.")
-        mz_mgr.update_session_devices(self._cast_info.uuid, add=add, remove=remove)
+        if (endpoint := mz_mgr.get_session_endpoint(self._cast_info.uuid)) is None:
+            raise HomeAssistantError("Chromecast is not playing anything.")
+        mz_mgr.update_session_devices(endpoint, add=add, remove=remove)
 
     @override
     async def async_join_players(self, group_members: list[str]) -> None:
