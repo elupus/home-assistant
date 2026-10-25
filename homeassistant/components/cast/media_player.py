@@ -1132,11 +1132,11 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
     @property
     @override
     def group_members(self) -> list[str] | None:
-        """Return the devices playing the same session as this device.
+        """Return the devices playing the same session as this device or group.
 
         The leader, the device hosting the group, is listed first.
         """
-        if self._cast_info.is_audio_group or self.mz_mgr is None:
+        if self.mz_mgr is None:
             return None
         endpoint = self.mz_mgr.get_session_endpoint(self._cast_info.uuid)
         if endpoint is None:
@@ -1186,8 +1186,7 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
         if "media_source" in self.hass.config.components:
             support |= MediaPlayerEntityFeature.BROWSE_MEDIA
 
-        if not self._cast_info.is_audio_group:
-            support |= MediaPlayerEntityFeature.GROUPING
+        support |= MediaPlayerEntityFeature.GROUPING
 
         return support
 

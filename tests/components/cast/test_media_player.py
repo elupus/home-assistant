@@ -2661,12 +2661,12 @@ async def async_setup_media_player_casts(
             announce(info)
         await hass.async_block_till_done(wait_background_tasks=True)
 
-    devices = [chromecasts[info.uuid] for info in infos if not info.is_audio_group]
-    for chromecast in devices:
+    for chromecast in chromecasts.values():
         _, conn_status_cb, _ = get_status_callbacks(chromecast)
         await async_send_connection_status(
             hass, conn_status_cb, MagicMock(status="CONNECTED")
         )
+    devices = [chromecasts[info.uuid] for info in infos if not info.is_audio_group]
     return devices, announce
 
 
@@ -2723,6 +2723,35 @@ async def test_join_players(hass: HomeAssistant, mz_mock) -> None:
         chromecast_2,
     ]
     mz_mock.get_session_endpoint.assert_called_with(FakeUUID)
+    mz_mock.update_session_devices.assert_called_once_with(
+        mz_mock.get_session_endpoint.return_value, add={FakeUUID2}, remove=set()
+    )
+
+
+async def test_join_players_group(hass: HomeAssistant, mz_mock) -> None:
+    """Test devices are added to the session playing on a group."""
+    group = get_fake_chromecast_info(
+        host="192.168.178.42", port=32203, uuid=FakeGroupUUID
+    )
+    info_2 = get_fake_chromecast_info(host="192.168.178.43", uuid=FakeUUID2)
+    await async_setup_media_player_casts(hass, [group, info_2])
+
+    assert (
+        hass.states.get("media_player.speaker").attributes["supported_features"]
+        & MediaPlayerEntityFeature.GROUPING
+    )
+
+    await hass.services.async_call(
+        MP_DOMAIN,
+        media_player.SERVICE_JOIN,
+        {
+            ATTR_ENTITY_ID: "media_player.speaker",
+            media_player.ATTR_GROUP_MEMBERS: ["media_player.speaker_2"],
+        },
+        blocking=True,
+    )
+
+    mz_mock.get_session_endpoint.assert_any_call(FakeGroupUUID)
     mz_mock.update_session_devices.assert_called_once_with(
         mz_mock.get_session_endpoint.return_value, add={FakeUUID2}, remove=set()
     )
