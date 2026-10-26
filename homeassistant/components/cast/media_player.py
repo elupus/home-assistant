@@ -19,11 +19,7 @@ from pychromecast.controllers.media import (
     MEDIA_PLAYER_STATE_PLAYING,
     MEDIA_PLAYER_STATE_UNKNOWN,
 )
-from pychromecast.controllers.multizone import (
-    MultizoneController,
-    MultizoneManager,
-    PlaybackSessionUpdate,
-)
+from pychromecast.controllers.multizone import MultizoneManager, SessionEndpoint
 from pychromecast.controllers.receiver import VOLUME_CONTROL_TYPE_FIXED
 from pychromecast.error import PyChromecastError
 from pychromecast.models import CastInfo, HostServiceInfo
@@ -76,7 +72,6 @@ from .helpers import (
     CastStatusListener,
     ChromecastInfo,
     ChromeCastZeroconf,
-    PlaybackSessionListener,
     PlaylistError,
     PlaylistSupported,
     parse_playlist,
@@ -202,7 +197,6 @@ class CastDevice:
         self._cast_info = cast_info
         self._chromecast: pychromecast.Chromecast | None = None
         self.mz_mgr: MultizoneManager | None = None
-        self._mz_controller: MultizoneController | None = None
         self._status_listener: CastStatusListener | None = None
         self._add_remove_handler: Callable[[], None] | None = None
         self._del_remove_handler: Callable[[], None] | None = None
@@ -267,7 +261,7 @@ class CastDevice:
         if runtime_data.multizone_manager is None:
             runtime_data.multizone_manager = MultizoneManager()
         self.mz_mgr = runtime_data.multizone_manager
-        self._mz_controller = self.mz_mgr.add_multizone(chromecast)
+        self.mz_mgr.add_multizone(chromecast)
 
         self._status_listener = CastStatusListener(
             self, chromecast, self.mz_mgr, self._mz_only
@@ -292,7 +286,6 @@ class CastDevice:
             self.mz_mgr.remove_multizone(self._cast_info.uuid)
         self._chromecast = None
         self.mz_mgr = None
-        self._mz_controller = None
         if self._status_listener is not None:
             self._status_listener.invalidate()
             self._status_listener = None
@@ -388,10 +381,6 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
     async def _async_connect_to_chromecast(self):
         """Set up the chromecast object."""
         await super()._async_connect_to_chromecast()
-
-        # The device or group can own the playback session of a dynamic group
-        assert self._mz_controller is not None
-        self._mz_controller.register_listener(PlaybackSessionListener(self))
 
         self._attr_available = False
         self.cast_status = self._chromecast.status
@@ -541,14 +530,11 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
         self.schedule_update_ha_state()
 
     @callback
-    def async_playback_session_updated(self, update: PlaybackSessionUpdate) -> None:
+    def async_session_moved(self, endpoint: SessionEndpoint, name: str) -> None:
         """Connect to a dynamic group the session moved to.
 
         The group is announced over mDNS too, but that can take a while.
         """
-        endpoint = update.session_endpoint
-        if endpoint is None:
-            return
         uuid = UUID(endpoint.device_id)
         if uuid in self._config_entry.runtime_data.devices:
             # The session moved to a device
@@ -565,7 +551,7 @@ class CastMediaPlayerEntity(CastDevice, MediaPlayerEntity):
                 {service},
                 uuid,
                 None,
-                update.name,
+                name,
                 endpoint.host,
                 endpoint.port,
                 pychromecast.const.CAST_TYPE_GROUP,

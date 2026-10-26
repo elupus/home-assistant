@@ -227,6 +227,14 @@ class CastStatusListener(
             self._cast_device.multizone_membership_changed(group_uuid, None)
 
     @override
+    def multizone_session_moved(self, group_uuid, endpoint, name):
+        """Schedule handling of the session move on the Home Assistant event loop."""
+        if self._valid:
+            self._cast_device.hass.loop.call_soon_threadsafe(
+                self._cast_device.async_session_moved, endpoint, name
+            )
+
+    @override
     def multizone_sessions_changed(self):
         """Handle a change of the devices playing a session."""
         if self._valid:
@@ -250,35 +258,6 @@ class CastStatusListener(
         if not self._cast_device._cast_info.is_audio_group:  # noqa: SLF001
             self._mz_mgr.deregister_listener(self._uuid, self)
         self._valid = False
-
-
-class PlaybackSessionListener(
-    pychromecast.controllers.multizone.MultiZoneControllerListener
-):
-    """Forward playback session updates of a device to the event loop."""
-
-    def __init__(self, cast_device) -> None:
-        """Initialize the listener."""
-        self._cast_device = cast_device
-
-    @override
-    def multizone_member_added(self, group_uuid):
-        """Handle a member added, a device's only member is itself."""
-
-    @override
-    def multizone_member_removed(self, group_uuid):
-        """Handle a member removed, a device's only member is itself."""
-
-    @override
-    def multizone_status_received(self):
-        """Handle multizone status."""
-
-    @override
-    def multizone_playback_session_updated(self, update):
-        """Schedule handling of the update on the Home Assistant event loop."""
-        self._cast_device.hass.loop.call_soon_threadsafe(
-            self._cast_device.async_playback_session_updated, update
-        )
 
 
 class PlaylistError(Exception):

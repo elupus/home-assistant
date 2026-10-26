@@ -2670,27 +2670,19 @@ async def async_setup_media_player_casts(
     return devices, announce
 
 
-def get_session_listener(mz_mock: MagicMock, chromecast: MagicMock) -> Any:
-    """Return the listener of session updates registered for a device."""
-    casts = [call.args[0] for call in mz_mock.add_multizone.call_args_list]
-    controller = mz_mock.add_multizone.return_value
-    listeners = [call.args[0] for call in controller.register_listener.call_args_list]
-    return listeners[casts.index(chromecast)]
-
-
 def session_updated(
     mz_mock: MagicMock, chromecast: MagicMock, device_id: UUID, port: int
 ) -> None:
     """Report that the session on a device moved to an endpoint."""
-    get_session_listener(mz_mock, chromecast).multizone_playback_session_updated(
-        multizone.PlaybackSessionUpdate(
-            "Speaker + 1",
-            [],
-            [],
-            multizone.SessionEndpoint(
-                str(device_id), "192.168.178.42", port, "session"
-            ),
-        )
+    listener = next(
+        call.args[1]
+        for call in mz_mock.register_listener.call_args_list
+        if call.args[0] == chromecast.uuid
+    )
+    listener.multizone_session_moved(
+        str(chromecast.uuid),
+        multizone.SessionEndpoint(str(device_id), "192.168.178.42", port, "session"),
+        "Speaker + 1",
     )
 
 
