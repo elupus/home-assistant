@@ -101,6 +101,16 @@ UNSUPPORTED_GROUP_SERVICE_INFO = BluetoothServiceInfo(
     source="local",
 )
 
+UNRELATED_SERVICE_INFO = BluetoothServiceInfo(
+    name="Unrelated",
+    address="00000000-0000-0000-0000-000000000007",
+    rssi=-63,
+    manufacturer_data={76: b"\x00"},
+    service_uuids=[],
+    service_data={},
+    source="local",
+)
+
 
 def get_config_entry(service_info: BluetoothServiceInfo) -> MockConfigEntry:
     """Construct a config entry for a given discovery."""

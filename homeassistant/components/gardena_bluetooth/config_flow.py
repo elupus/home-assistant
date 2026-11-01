@@ -29,6 +29,11 @@ _SUPPORTED_PRODUCT_TYPES = {
 }
 
 
+def _is_candidate(mfg: ManufacturerData) -> bool:
+    """Return if the device is supported, or its product info was never seen."""
+    return mfg.group is None or mfg.product_type in _SUPPORTED_PRODUCT_TYPES
+
+
 class GardenaBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Gardena Bluetooth."""
 
@@ -43,10 +48,15 @@ class GardenaBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_read_data(self):
         """Try to connect to device and extract information."""
         assert self.address
-        client = Client(get_connection(self.hass, self.address))
+        assert self.address in self.devices
+        client = Client(
+            get_connection(self.hass, self.address),
+            self.devices[self.address].product_type,
+        )
         try:
             model = await client.read_char(DeviceInformation.model_number)
             _LOGGER.debug("Found device with model: %s", model)
+            product_type = await client.get_product_type()
         except (CharacteristicNotFound, CommunicationFailure) as exception:
             raise AbortFlow(
                 "cannot_connect", description_placeholders={"error": str(exception)}
@@ -54,10 +64,12 @@ class GardenaBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
         finally:
             await client.disconnect()
 
-        assert self.address in self.devices
+        if product_type not in _SUPPORTED_PRODUCT_TYPES:
+            raise AbortFlow("unsupported_product")
+
         return {
             CONF_ADDRESS: self.address,
-            CONF_PRODUCT_TYPE: self.devices[self.address].product_type.name,
+            CONF_PRODUCT_TYPE: product_type.name,
         }
 
     @override
@@ -72,7 +84,7 @@ class GardenaBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
 
         mfg = await async_get_product(self.hass, discovery_info.address)
         self.devices[discovery_info.address] = mfg
-        if mfg.product_type not in _SUPPORTED_PRODUCT_TYPES:
+        if not _is_candidate(mfg):
             return self.async_abort(reason="no_devices_found")
 
         self.address = discovery_info.address
@@ -91,10 +103,10 @@ class GardenaBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Confirm discovery."""
         assert self.address
-        title = self.context["title_placeholders"]["name"]
 
         if user_input is not None:
             data = await self.async_read_data()
+            title = PRODUCT_NAMES[ProductType[data[CONF_PRODUCT_TYPE]]]
             return self.async_create_entry(title=title, data=data)
 
         return self.async_show_form(
@@ -124,10 +136,9 @@ class GardenaBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Keep selection sorted by address to ensure stable tests
         devices = {
-            address: PRODUCT_NAMES[data.product_type]
+            address: PRODUCT_NAMES[self.devices[address].product_type]
             for address in sorted(self.devices)
-            if address not in current
-            and (data := self.devices[address]).product_type in _SUPPORTED_PRODUCT_TYPES
+            if address not in current and _is_candidate(self.devices[address])
         }
 
         if not devices:

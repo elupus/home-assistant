@@ -70,24 +70,22 @@ async def async_get_products(hass: HomeAssistant) -> dict[str, ManufacturerData]
 
     def _data_callback(info: BluetoothServiceInfoBleak) -> bool:
         LOGGER.debug("Processing advertisement from %s: %s", info.address, info)
-        if ScanService not in info.service_uuids:
+        raw = info.manufacturer_data.get(ManufacturerData.company)
+        if raw is None and ScanService not in info.service_uuids:
             return False
 
-        raw = info.manufacturer_data.get(ManufacturerData.company, b"")
         if (data := products.get(info.device.address)) is None:
             data = ManufacturerData()
             products[info.device.address] = data
 
-        data.update(raw)
+        data.update(raw or b"")
         return False
 
     with suppress(TimeoutError):
         await bluetooth.async_process_advertisements(
             hass,
             _data_callback,
-            bluetooth.BluetoothCallbackMatcher(
-                manufacturer_id=ManufacturerData.company
-            ),
+            bluetooth.BluetoothCallbackMatcher(),
             mode=bluetooth.BluetoothScanningMode.ACTIVE,
             timeout=PRODUCTS_SCAN_TIMEOUT,
         )

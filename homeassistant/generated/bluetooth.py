@@ -186,8 +186,12 @@ BLUETOOTH: Final[list[dict[str, bool | str | int | list[int]]]] = [
     {
         "connectable": True,
         "domain": "gardena_bluetooth",
-        "manufacturer_id": 1062,
         "service_uuid": "98bd0001-0b0e-421a-84e5-ddbf75dc6de4",
+    },
+    {
+        "connectable": True,
+        "domain": "gardena_bluetooth",
+        "manufacturer_id": 1062,
     },
     {
         "connectable": False,

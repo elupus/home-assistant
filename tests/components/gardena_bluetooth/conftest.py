@@ -10,7 +10,7 @@ from freezegun.api import FrozenDateTimeFactory
 from gardena_bluetooth.client import Client
 from gardena_bluetooth.const import DeviceInformation
 from gardena_bluetooth.exceptions import CharacteristicNotFound
-from gardena_bluetooth.parse import Characteristic, Service
+from gardena_bluetooth.parse import Characteristic, ProductType, Service
 import pytest
 from pytest_homeassistant.common import async_fire_time_changed
 from typing_extensions import Sentinel as sentinel
@@ -152,6 +152,14 @@ def mock_client(
             return default
         return val
 
+    def _get_product_type() -> ProductType:
+        """Fall back on the PnP ID when created without a product type."""
+        product_type = client_class.call_args.args[1]
+        pnp_id = mock_read_char_raw.get(DeviceInformation.pnp_id.unique_id)
+        if product_type is not ProductType.UNKNOWN or pnp_id is None:
+            return product_type
+        return ProductType.from_pnp_id(DeviceInformation.pnp_id.decode(pnp_id))
+
     def _all_char_uuid():
         """Physical uuids the device exposes."""
         return {char.uuid for char in _chars() if char.unique_id in mock_read_char_raw}
@@ -164,6 +172,7 @@ def mock_client(
     client = Mock(spec_set=Client)
     client.read_char.side_effect = _read_char
     client.read_char_raw.side_effect = _read_char_raw
+    client.get_product_type.side_effect = _get_product_type
     client.get_all_characteristics_uuid.side_effect = _all_char_uuid
     client.get_all_characteristics.side_effect = _all_char
     client_class.return_value = client
@@ -213,7 +222,13 @@ def constant_advertisements() -> Generator[None]:
     ) -> bluetooth.BluetoothServiceInfoBleak:
 
         last = None
+        manufacturer_id = match_dict.get("manufacturer_id")
         for advertisement in bluetooth.async_discovered_service_info(hass):
+            if (
+                manufacturer_id is not None
+                and manufacturer_id not in advertisement.manufacturer_data
+            ):
+                continue
             callback(advertisement)
             last = advertisement
         if not last:

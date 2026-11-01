@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import Mock
 
+from gardena_bluetooth.const import DeviceInformation
 from gardena_bluetooth.exceptions import CharacteristicNotFound
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
@@ -10,7 +11,7 @@ from pytest_homeassistant.components.bluetooth import inject_bluetooth_service_i
 from syrupy.assertion import SnapshotAssertion
 
 from homeassistant import config_entries
-from homeassistant.components.gardena_bluetooth.const import DOMAIN
+from homeassistant.components.gardena_bluetooth.const import CONF_PRODUCT_TYPE, DOMAIN
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -20,6 +21,7 @@ from . import (
     MISSING_MANUFACTURER_DATA_SERVICE_INFO,
     MISSING_PRODUCT_SERVICE_INFO,
     MISSING_SERVICE_SERVICE_INFO,
+    UNRELATED_SERVICE_INFO,
     UNSUPPORTED_GROUP_SERVICE_INFO,
     WATER_TIMER_SERVICE_INFO,
     WATER_TIMER_UNNAMED_SERVICE_INFO,
@@ -122,8 +124,7 @@ async def test_no_valid_devices(
 ) -> None:
     """Test no valid candidates."""
 
-    inject_bluetooth_service_info(hass, MISSING_MANUFACTURER_DATA_SERVICE_INFO)
-    inject_bluetooth_service_info(hass, MISSING_SERVICE_SERVICE_INFO)
+    inject_bluetooth_service_info(hass, UNRELATED_SERVICE_INFO)
     inject_bluetooth_service_info(hass, UNSUPPORTED_GROUP_SERVICE_INFO)
 
     result = await hass.config_entries.flow.async_init(
@@ -133,22 +134,141 @@ async def test_no_valid_devices(
     assert result.get("reason") == "no_devices_found"
 
 
-async def test_timeout_manufacturer_data(
+@pytest.mark.parametrize(
+    "service_info",
+    [MISSING_PRODUCT_SERVICE_INFO, MISSING_MANUFACTURER_DATA_SERVICE_INFO],
+    ids=["no_product_info", "no_manufacturer_data"],
+)
+@pytest.mark.parametrize(
+    ("raw", "product_type", "title"),
+    [
+        pytest.param(
+            b"\x01\x26\x04\x12\x00\x10\x00",
+            "AQUA_CONTOURS",
+            "Gardena Aqua Precise",
+            id="aqua_precise",
+        ),
+        pytest.param(
+            b"\x01\x26\x04\x11\x00\x02\x00",
+            "PRESSURE_TANKS",
+            "Gardena Pressure Tanks",
+            id="pressure_tank",
+        ),
+    ],
+)
+async def test_user_selection_product_from_pnp_id(
     hass: HomeAssistant,
+    mock_read_char_raw: dict[str, bytes],
+    service_info: BluetoothServiceInfo,
+    raw: bytes,
+    product_type: str,
+    title: str,
 ) -> None:
-    """Test the flow aborts with no_devices_found.
+    """Test the product type comes from the PnP ID without product advertisements."""
+    mock_read_char_raw[DeviceInformation.model_number.unique_id] = b"Model"
+    mock_read_char_raw[DeviceInformation.pnp_id.unique_id] = raw
 
-    Specifically when manufacturer data times out and only partial info
-    is available.
-    """
-
-    inject_bluetooth_service_info(hass, MISSING_PRODUCT_SERVICE_INFO)
+    inject_bluetooth_service_info(hass, service_info)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
+    assert result.get("type") is FlowResultType.FORM
 
-    assert result.get("type") == "abort"
-    assert result.get("reason") == "no_devices_found"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_ADDRESS: service_info.address},
+    )
+    assert result.get("step_id") == "confirm"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={}
+    )
+    assert result.get("type") is FlowResultType.CREATE_ENTRY
+    assert result.get("title") == title
+    assert result.get("data") == {
+        CONF_ADDRESS: service_info.address,
+        CONF_PRODUCT_TYPE: product_type,
+    }
+    assert result["result"].unique_id == service_info.address
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param(b"\x01\x4c\x00\x12\x00\x10\x00", id="other_vendor"),
+        pytest.param(b"\x01\x26\x04\x0a\x00\x01\x00", id="mower"),
+    ],
+)
+async def test_bluetooth_unsupported_pnp_id(
+    hass: HomeAssistant, mock_read_char_raw: dict[str, bytes], raw: bytes | None
+) -> None:
+    """Test discovery aborts when the PnP ID does not give a supported product."""
+    mock_read_char_raw[DeviceInformation.model_number.unique_id] = b"Model"
+    if raw is not None:
+        mock_read_char_raw[DeviceInformation.pnp_id.unique_id] = raw
+
+    inject_bluetooth_service_info(hass, MISSING_PRODUCT_SERVICE_INFO)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    result = next(iter(hass.config_entries.flow.async_progress_by_handler(DOMAIN)))
+    assert result.get("step_id") == "confirm"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={}
+    )
+    assert result.get("type") is FlowResultType.ABORT
+    assert result.get("reason") == "unsupported_product"
+
+
+async def test_bluetooth_scan_service_only(
+    hass: HomeAssistant, mock_read_char_raw: dict[str, bytes]
+) -> None:
+    """Test discovery of a device advertising nothing but the scan service."""
+    mock_read_char_raw[DeviceInformation.model_number.unique_id] = b"Model"
+    mock_read_char_raw[DeviceInformation.pnp_id.unique_id] = (
+        b"\x01\x26\x04\x12\x00\x10\x00"
+    )
+
+    inject_bluetooth_service_info(hass, MISSING_MANUFACTURER_DATA_SERVICE_INFO)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    result = next(iter(hass.config_entries.flow.async_progress_by_handler(DOMAIN)))
+    assert result.get("step_id") == "confirm"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={}
+    )
+    assert result.get("type") is FlowResultType.CREATE_ENTRY
+    assert result.get("data") == {
+        CONF_ADDRESS: MISSING_MANUFACTURER_DATA_SERVICE_INFO.address,
+        CONF_PRODUCT_TYPE: "AQUA_CONTOURS",
+    }
+    assert result["result"].unique_id == MISSING_MANUFACTURER_DATA_SERVICE_INFO.address
+
+
+async def test_user_selection_manufacturer_id_only(hass: HomeAssistant) -> None:
+    """Test selecting a device advertising no scan service."""
+    inject_bluetooth_service_info(hass, MISSING_SERVICE_SERVICE_INFO)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result.get("type") is FlowResultType.FORM
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_ADDRESS: MISSING_SERVICE_SERVICE_INFO.address},
+    )
+    assert result.get("step_id") == "confirm"
+
+
+async def test_bluetooth_manufacturer_id_only(hass: HomeAssistant) -> None:
+    """Test discovery of a device advertising no scan service."""
+    inject_bluetooth_service_info(hass, MISSING_SERVICE_SERVICE_INFO)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    result = next(iter(hass.config_entries.flow.async_progress_by_handler(DOMAIN)))
+    assert result.get("step_id") == "confirm"
 
 
 async def test_no_devices_at_all(
